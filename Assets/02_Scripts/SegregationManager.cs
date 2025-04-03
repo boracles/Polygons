@@ -96,7 +96,7 @@ public class SegregationManager : MonoBehaviour
     }
 
     
-    // 에이전트 생성 함수: Prefab 생성 후, Animator 초기 파라미터 세팅(Idle/Locomotion 등)
+    // 에이전트 생성 함수
     void InstantiateAgent(GameObject prefab, int x, int z, int color)
     {
         GameObject agent = Instantiate(prefab, new Vector3(x,0.5f,-z), Quaternion.identity);
@@ -109,10 +109,8 @@ public class SegregationManager : MonoBehaviour
             agentComp.color = color; // 1=검정, 2=흰색
         }
     }
-
-    /// <summary>
-    /// 순차적으로 불만족자를 한 명씩 이동 & 그때마다 애니메이션
-    /// </summary>
+    
+    // 순차적으로 불만족자를 한 명씩 이동
     IEnumerator DoOneRoundSequential()
     {
         roundCount++;
@@ -134,7 +132,7 @@ public class SegregationManager : MonoBehaviour
                 }
             }
             
-            // 2) 불만족자가 하나도 없으면 -> 이 라운드 종료
+            // 불만족자가 하나도 없으면 -> 이 라운드 종료
             if(unsatisfiedList.Count == 0)
             {
                 break; 
@@ -152,7 +150,6 @@ public class SegregationManager : MonoBehaviour
                 
                 // Hit Reaction 애니메이션: 불만족 상태이므로
                 SetAgentSatisfied(oldX, oldZ, false);
-
                 yield return new WaitForSeconds(0.2f);
                 
                 Vector2Int? candidate = FindRandomCandidate(color);
@@ -162,7 +159,7 @@ public class SegregationManager : MonoBehaviour
                     Vector2Int c = candidate.Value;
 
                     // (간단 버전) 즉시 파괴 후 생성, 혹은 Lerp 이동 구현 가능
-                    yield return StartCoroutine(MoveAgentInstant(oldX, oldZ, c.x, c.y, 0.2f));
+                    yield return StartCoroutine(MoveAgentLerp(oldX, oldZ, c.x, c.y, 0.5f));
                     
                     bool nowSat = IsSatisfied(c.x, c.y);
                     SetAgentSatisfied(c.x, c.y, nowSat);
@@ -176,25 +173,37 @@ public class SegregationManager : MonoBehaviour
         UpdateStatusText(moveCount);
     }
     
-    // 이동: 기존 오브젝트 파괴 후 새 위치에 생성 (혹은 Lerp)
-    IEnumerator MoveAgentInstant(int oldX, int oldZ, int newX, int newZ, float waitTime)
+    // 기존 오브젝트를 부드럽게 새 위치로 이동
+    IEnumerator MoveAgentLerp(int oldX, int oldZ, int newX, int newZ, float lerpDuration)
     {
-        int color = board[oldX, oldZ];
-
-        // 기존 자리 비움
-        board[oldX, oldZ] = 0;
-        if(agentObjects[oldX, oldZ] != null)
-        {
-            Destroy(agentObjects[oldX, oldZ]);
-            agentObjects[oldX, oldZ] = null;
-        }
-
-        // 새 위치
-        board[newX, newZ] = color;
-        GameObject prefab = (color == 1) ? blackSpherePrefab : whiteCubePrefab;
-        InstantiateAgent(prefab, newX, newZ, color);
-        
-        yield return new WaitForSeconds(waitTime);
+       int color = board[oldX, oldZ];
+       
+               // 1) 에이전트/오브젝트 가져오기
+               GameObject agent = agentObjects[oldX, oldZ];
+               if(agent == null) yield break; // 혹시 null이면 중단
+       
+               // 2) 보드 갱신(배열에서 old 자리 비우고 new 자리 차지)
+               board[oldX, oldZ] = 0;
+               board[newX, newZ] = color;
+       
+               // 3) agentObjects 갱신
+               agentObjects[oldX, oldZ] = null;
+               agentObjects[newX, newZ] = agent;
+       
+               // 4) Lerp 동작 (시작-끝 위치 계산)
+               Vector3 startPos = agent.transform.position;               // 현재 위치
+               Vector3 endPos   = new Vector3(newX, 0.5f, -newZ);         // 목표 위치
+       
+               float elapsed = 0f;
+               while(elapsed < lerpDuration)
+               {
+                   elapsed += Time.deltaTime;
+                   float t = Mathf.Clamp01(elapsed / lerpDuration);
+                   agent.transform.position = Vector3.Lerp(startPos, endPos, t);
+                   yield return null;
+               }
+               // 마지막에 위치 확정
+               agent.transform.position = endPos;
     }
 
     /// <summary>
@@ -240,7 +249,6 @@ public class SegregationManager : MonoBehaviour
                 if(nx == x && nz == z) continue;
                 if(nx<0 || nx>=width || nz<0 || nz>=height) continue;
 
-                // occupant인지 판별 (검정=1, 흰색=2)
                 if(board[nx,nz] != 0)
                 {
                     totalNeighbors++;
@@ -254,15 +262,12 @@ public class SegregationManager : MonoBehaviour
 
         if(totalNeighbors == 0)
         {
-            // 이웃이 아무도 없으면 만족으로 처리할지, 불만족으로 할지는 취향
-            // 여기서는 true(만족)로 가정
-            agentComp.SetStateByRatio(1f); // 100% 내 색 or 사실상 아무도 없음
+            // 이웃이 없으면 일단 만족 처리
+            agentComp.SetStateByRatio(1f);
             return true;
         }
 
         float ratio = (float)sameCount / totalNeighbors;
-
-        // threshold 비교
         bool satisfied;
         if(myColor == 1) // 검정
         {
@@ -275,7 +280,6 @@ public class SegregationManager : MonoBehaviour
 
         // Agent에 ratio 전달, 내부 state도 업데이트
         agentComp.SetStateByRatio(ratio);
-
         return satisfied;
     }
 
@@ -319,15 +323,15 @@ public class SegregationManager : MonoBehaviour
                 if(board[nx,nz] != 0)
                 {
                     totalNeighbors++;
-                    if(board[nx,nz] == color) sameCount++;
+                   if(board[nx,nz] == color)
+                   { 
+                       sameCount++;
+                   }
                 }
             }
         }
         
-        if(totalNeighbors == 0)
-        {
-            return true; // 이웃이 없으면 OK 처리
-        }
+        if(totalNeighbors == 0) return true; // 이웃이 없으면 만족
 
         float ratio = (float)sameCount / totalNeighbors;
         if(color == 1) // 검정
