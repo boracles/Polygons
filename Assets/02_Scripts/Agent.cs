@@ -12,7 +12,7 @@ public class Agent : MonoBehaviour
     [Header("Schelling State")]
     public SatisfactionState currentState = SatisfactionState.Satisfied;
     
-    public int color; // 1=black, 2=white, etc.
+    public int color;
 
     public void SetStateByRatio(float ratio)
     {
@@ -28,8 +28,7 @@ public class Agent : MonoBehaviour
         {
             currentState = SatisfactionState.Satisfied;
         }
-
-        // Animator 갱신
+        
         UpdateAnimator();
     }
 
@@ -38,7 +37,7 @@ public class Agent : MonoBehaviour
         Animator anim = GetComponent<Animator>();
         if(anim == null) return;
         
-        bool isSatisfied = (currentState == SatisfactionState.Satisfied);
+        bool isSatisfied = (currentState == SatisfactionState.Satisfied ||currentState == SatisfactionState.Meh );
         anim.SetBool("isSatisfied", isSatisfied);
     }
 }
