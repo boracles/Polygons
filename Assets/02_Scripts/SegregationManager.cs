@@ -27,7 +27,6 @@ public class SegregationManager : MonoBehaviour
     private GameObject[,] agentObjects;
     private bool isAutoRunning = false;
     private int roundCount = 0;
-    
     private Coroutine autoCoroutine = null;
 
     void Start()
@@ -36,12 +35,8 @@ public class SegregationManager : MonoBehaviour
         UpdateStatusText();
     }
     
-    /// <summary>
-    /// 보드 초기화 (기존 오브젝트 삭제, 새로 랜덤 배치)
-    /// </summary>
     public void InitBoard()
     {
-        // 기존 오브젝트 정리
         if(board != null)
         {
             for(int x = 0; x < width; x++)
@@ -65,50 +60,52 @@ public class SegregationManager : MonoBehaviour
             for(int z = 0; z < height; z++)
             {
                 float rand = Random.value;
-                int color = 0;
                 if(rand < 0.3f)
                 {
-                    color = 0; // 빈칸
-                }
-                else if(rand < 0.65f) // 35% 검정 구
-                {
-                    color = 1; // 검정 구
+                    // 빈 칸
+                    board[x,z] = 0;
                 }
                 else
                 {
-                    color = 2; // 흰색 큐브
+                    // occupant
+                    // ex) rand < 0.65f => 검정, else 흰색
+                    if(rand < 0.65f)
+                    {
+                        board[x,z] = 1;  // 검정
+                        // 프리팹 Instatiate
+                        InstantiateAgent(blackSpherePrefab, x, z);
+                    }
+                    else
+                    {
+                        board[x,z] = 2;  // 흰색
+                        InstantiateAgent(whiteCubePrefab, x, z);
+                    }
                 }
-                board[x,z] = color;
-                
-                if(color != 0)
+            }
+        }
+
+        // 초기 만족/불만족 설정
+        for(int x=0; x<width; x++)
+        {
+            for(int z=0; z<height; z++)
+            {
+                if(board[x,z] != 0)
                 {
-                    // Instantiate & Animator Param 설정
-                    InstantiateAgent(color, x, z);
+                    bool sat = IsSatisfied(x,z);
+                    SetAgentSatisfied(x,z, sat);
                 }
             }
         }
     }
 
-    /// <summary>
-    /// 에이전트 생성 함수: Prefab 생성 후, Animator 초기 파라미터 세팅(Idle/Locomotion 등)
-    /// </summary>
-    void InstantiateAgent(int color, int x, int z)
-    {
-        GameObject prefab = (color == 1) ? blackSpherePrefab : whiteCubePrefab;
-        GameObject agent = Instantiate(prefab, new Vector3(x, 0.5f, -z), Quaternion.identity);
-        agentObjects[x,z] = agent;
-
-        // Animator 초기 설정
-        Animator anim = agent.GetComponent<Animator>();
-        if(anim != null)
-        {
-            // 만족 상태(초기엔 만족이라고 가정)
-            anim.SetBool("isSatisfied", true);
-            // 이동 중 아님
-            anim.SetBool("isMoving", false);
-        }
-    }
     
+    // 에이전트 생성 함수: Prefab 생성 후, Animator 초기 파라미터 세팅(Idle/Locomotion 등)
+    void InstantiateAgent(GameObject prefab, int x, int z)
+    {
+        GameObject agent = Instantiate(prefab, new Vector3(x,0.5f,-z), Quaternion.identity);
+        agentObjects[x,z] = agent;
+    }
+
     /// <summary>
     /// 순차적으로 불만족자를 한 명씩 이동 & 그때마다 애니메이션
     /// </summary>
@@ -119,7 +116,7 @@ public class SegregationManager : MonoBehaviour
         
         while(true)
         {
-            // 1) 불만족자 수집
+            // 불만족자 수집
             List<(int x, int z)> unsatisfiedList = new List<(int, int)>();
             for(int x=0; x<width; x++)
             {
@@ -150,7 +147,7 @@ public class SegregationManager : MonoBehaviour
                 int color = board[oldX, oldZ];
                 
                 // Hit Reaction 애니메이션: 불만족 상태이므로
-                SetAgentSatisfied(oldX, oldZ, false); // isSatisfied = false
+                SetAgentSatisfied(oldX, oldZ, false);
                 // 잠깐 대기(히트 리액션 보여주고 싶다면)
                 yield return new WaitForSeconds(0.2f);
                 
@@ -160,15 +157,9 @@ public class SegregationManager : MonoBehaviour
                     moveCount++;
                     Vector2Int c = candidate.Value;
 
-                    // 이동 애니메이션
-                    SetAgentMoving(oldX, oldZ, true);
-                    
                     // (간단 버전) 즉시 파괴 후 생성, 혹은 Lerp 이동 구현 가능
                     yield return StartCoroutine(MoveAgentInstant(oldX, oldZ, c.x, c.y, 0.2f));
-
-                    // 이동 끝 -> isMoving false
-                    // 만약 새 위치에서 만족 여부를 즉시 반영하고 싶다면 SetAgentSatisfied() 다시 호출
-                    // 여기서는 일단 true로 돌려놓음(나중에 전체적으론 다시 검사할 것)
+                    
                     SetAgentSatisfied(c.x, c.y, true);
                 }
             }
@@ -199,25 +190,10 @@ public class SegregationManager : MonoBehaviour
 
         // 새 위치
         board[newX, newZ] = color;
-        InstantiateAgent(color, newX, newZ);
-
-        // 이동 완료 후 잠깐 대기
+        GameObject prefab = (color == 1) ? blackSpherePrefab : whiteCubePrefab;
+        InstantiateAgent(prefab, newX, newZ);
+        
         yield return new WaitForSeconds(waitTime);
-    }
-    
-    /// <summary>
-    /// 에이전트의 Animator에서 isMoving = true/false를 세팅
-    /// </summary>
-    void SetAgentMoving(int x, int z, bool moving)
-    {
-        GameObject agent = agentObjects[x,z];
-        if(agent == null) return;
-
-        Animator anim = agent.GetComponent<Animator>();
-        if(anim != null)
-        {
-            anim.SetBool("isMoving", moving);
-        }
     }
     
     /// <summary>
@@ -237,29 +213,54 @@ public class SegregationManager : MonoBehaviour
     
     bool IsSatisfied(int x, int z)
     {
-        int color = board[x,z];
+        // 먼저 occupant인지 확인
+        if(board[x,z] == 0) return true; // 빈 칸이면 스킵 or 만족 취급
+
+        // 에이전트
+        GameObject agent = agentObjects[x,z];
+        Agent agentComp = agent.GetComponent<Agent>();
+        if(agentComp == null) return true; // fallback
+
+        int myColor = agentComp.color; // 1 or 2
+
         int sameCount = 0;
         int totalNeighbors = 0;
-        
+
         for(int nx = x-1; nx <= x+1; nx++)
         {
             for(int nz = z-1; nz <= z+1; nz++)
             {
-                if(nx == x && nz == z) continue; 
+                if(nx == x && nz == z) continue;
                 if(nx<0 || nx>=width || nz<0 || nz>=height) continue;
 
-                if(board[nx,nz] != 0)
+                if(board[nx,nz] == 1) // occupant
                 {
-                    totalNeighbors++;
-                    if(board[nx,nz] == color) sameCount++;
+                    // 이웃의 agent
+                    GameObject neighObj = agentObjects[nx,nz];
+                    if(neighObj != null)
+                    {
+                        Agent neighComp = neighObj.GetComponent<Agent>();
+                        if(neighComp != null)
+                        {
+                            totalNeighbors++;
+                            if(neighComp.color == myColor)
+                            {
+                                sameCount++;
+                            }
+                        }
+                    }
                 }
             }
         }
-        if(totalNeighbors == 0) return true; // 이웃이 없으면 만족한다고 치자
-        
+
+        if(totalNeighbors == 0) return true;
+
         float ratio = (float)sameCount / totalNeighbors;
-        if(color == 1)      return (ratio >= blackThreshold);
-        else /* color==2 */ return (ratio >= whiteThreshold);
+        // threshold 등은 blackThreshold, whiteThreshold 없이
+        //  if(myColor==1) ...
+        //  else ...
+        //    or single threshold etc.
+        return (ratio >= 0.33f); // etc.
     }
 
     Vector2Int? FindRandomCandidate(int color)
@@ -339,10 +340,7 @@ public class SegregationManager : MonoBehaviour
     {
         while(isAutoRunning)
         {
-            // 한 라운드를 코루틴으로 순차 진행
             yield return StartCoroutine(DoOneRoundSequential());
-
-            // 라운드 간격
             yield return new WaitForSeconds(autoRoundInterval);
         }
     }
@@ -351,31 +349,24 @@ public class SegregationManager : MonoBehaviour
     {
         isAutoRunning = false;
         StopAllCoroutines();
-        
         if(autoCoroutine != null)
         {
             StopCoroutine(autoCoroutine);
             autoCoroutine = null;
         }
-
-        // 새 보드 생성
         InitBoard();
         UpdateStatusText(0);
     }
 
     public void OnClickStart()
     {
-        // toggle
         isAutoRunning = !isAutoRunning;
-
         if(isAutoRunning)
         {
-            // 코루틴 시작
             autoCoroutine = StartCoroutine(AutoRunCoroutine());
         }
         else
         {
-            // 코루틴 중지
             if(autoCoroutine != null)
             {
                 StopCoroutine(autoCoroutine);

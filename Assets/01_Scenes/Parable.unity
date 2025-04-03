@@ -1346,8 +1346,8 @@ MonoBehaviour:
   height: 20
   blackSpherePrefab: {fileID: 11161733078947214, guid: 4bbcfcded61604e709196de53fe8df49, type: 3}
   whiteCubePrefab: {fileID: 1826974793707090422, guid: 5c00d6aa624f6473d86545306e1759a4, type: 3}
-  blackThreshold: 0.5
-  whiteThreshold: 0.5
+  blackThreshold: 0.33
+  whiteThreshold: 0.33
   statusText: {fileID: 0}
   autoRoundInterval: 1
 --- !u!1001 &9137243527756241737
