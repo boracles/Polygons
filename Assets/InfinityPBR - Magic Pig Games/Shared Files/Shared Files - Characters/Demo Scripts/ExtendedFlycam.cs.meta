@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: 7876360a823af4440bc3ff58e9e32d53
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 68817
+  packageName: Gelatinous Cube & Sphere Pack PBR - Fantasy RPG
+  packageVersion: 4.3.2
+  assetPath: Assets/InfinityPBR - Magic Pig Games/Shared Files/Shared Files - Characters/Demo
+    Scripts/ExtendedFlycam.cs
+  uploadId: 736663

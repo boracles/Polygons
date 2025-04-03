@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: 1643e6fa0eac44d0fa7e979c4c4d9000
+timeCreated: 1512790264
+licenseType: Store
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 68817
+  packageName: Gelatinous Cube & Sphere Pack PBR - Fantasy RPG
+  packageVersion: 4.3.2
+  assetPath: Assets/InfinityPBR - Magic Pig Games/Shared Files/Magic Spells & Particles/Scripts/SFB_LightAutoOff.cs
+  uploadId: 736663

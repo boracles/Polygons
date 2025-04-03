@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 938004f063eefba4ab5538c4c89e1e18
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 68817
+  packageName: Gelatinous Cube & Sphere Pack PBR - Fantasy RPG
+  packageVersion: 4.3.2
+  assetPath: Assets/InfinityPBR - Magic Pig Games/Shared Files/Shaders/Shader Functions/Hair
+    Anisotropic.asset
+  uploadId: 736663

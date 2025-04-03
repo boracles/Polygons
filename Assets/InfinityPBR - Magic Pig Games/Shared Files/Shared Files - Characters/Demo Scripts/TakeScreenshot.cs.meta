@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: a25fb5ef352784af687be8816f903da0
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 68817
+  packageName: Gelatinous Cube & Sphere Pack PBR - Fantasy RPG
+  packageVersion: 4.3.2
+  assetPath: Assets/InfinityPBR - Magic Pig Games/Shared Files/Shared Files - Characters/Demo
+    Scripts/TakeScreenshot.cs
+  uploadId: 736663

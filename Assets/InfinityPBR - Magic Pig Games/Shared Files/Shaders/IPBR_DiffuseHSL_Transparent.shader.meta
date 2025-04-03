@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 2d13dc268de5b4c5a8a557104d573716
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 68817
+  packageName: Gelatinous Cube & Sphere Pack PBR - Fantasy RPG
+  packageVersion: 4.3.2
+  assetPath: Assets/InfinityPBR - Magic Pig Games/Shared Files/Shaders/IPBR_DiffuseHSL_Transparent.shader
+  uploadId: 736663

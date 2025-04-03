@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: b55e89ebcd6ce498589df8d2b19e692d
+timeCreated: 1470352319
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 68817
+  packageName: Gelatinous Cube & Sphere Pack PBR - Fantasy RPG
+  packageVersion: 4.3.2
+  assetPath: Assets/InfinityPBR - Magic Pig Games/Characters/Gelatinous Cube & Sphere/v1
+    Textures  Materials/GelatinousSphere_3.mat
+  uploadId: 736663

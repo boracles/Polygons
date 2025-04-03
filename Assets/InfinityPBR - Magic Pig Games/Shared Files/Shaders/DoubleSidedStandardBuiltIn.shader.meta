@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 38b80ff8a9bc54bc8bded8542cf8c779
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  preprocessorOverride: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 68817
+  packageName: Gelatinous Cube & Sphere Pack PBR - Fantasy RPG
+  packageVersion: 4.3.2
+  assetPath: Assets/InfinityPBR - Magic Pig Games/Shared Files/Shaders/DoubleSidedStandardBuiltIn.shader
+  uploadId: 736663

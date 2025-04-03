@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 42727044413e1f548a2cf2ba868ce472
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 68817
+  packageName: Gelatinous Cube & Sphere Pack PBR - Fantasy RPG
+  packageVersion: 4.3.2
+  assetPath: Assets/InfinityPBR - Magic Pig Games/Shared Files/Shaders/AV/Hair/AV
+    Standard Hair.shader
+  uploadId: 736663
