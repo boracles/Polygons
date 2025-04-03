@@ -158,8 +158,7 @@ public class SegregationManager : MonoBehaviour
                     moveCount++;
                     Vector2Int c = candidate.Value;
 
-                    // (간단 버전) 즉시 파괴 후 생성, 혹은 Lerp 이동 구현 가능
-                    yield return StartCoroutine(MoveAgentLerp(oldX, oldZ, c.x, c.y, 0.5f));
+                    yield return StartCoroutine(MoveAgentLerp(oldX, oldZ, c.x, c.y, 0.2f));
                     
                     bool nowSat = IsSatisfied(c.x, c.y);
                     SetAgentSatisfied(c.x, c.y, nowSat);
@@ -173,7 +172,6 @@ public class SegregationManager : MonoBehaviour
         UpdateStatusText(moveCount);
     }
     
-    // 기존 오브젝트를 부드럽게 새 위치로 이동
     IEnumerator MoveAgentLerp(int oldX, int oldZ, int newX, int newZ, float lerpDuration)
     {
        int color = board[oldX, oldZ];
@@ -217,7 +215,8 @@ public class SegregationManager : MonoBehaviour
         Agent agentComp = agent.GetComponent<Agent>();
         if(agentComp != null)
         {
-            agentComp.currentState = satisfied ? Agent.SatisfactionState.Satisfied 
+            agentComp.currentState = satisfied 
+                ? Agent.SatisfactionState.Satisfied 
                 : Agent.SatisfactionState.UnSatisfied;
         }
         
@@ -262,9 +261,9 @@ public class SegregationManager : MonoBehaviour
 
         if(totalNeighbors == 0)
         {
-            // 이웃이 없으면 일단 만족 처리
+            // 이웃이 없으면 ratio=1f로 보고 SetStateByRatio(1f)
             agentComp.SetStateByRatio(1f);
-            return true;
+            return true; // => Manager 입장에서는 “만족했다”고 판단
         }
 
         float ratio = (float)sameCount / totalNeighbors;
