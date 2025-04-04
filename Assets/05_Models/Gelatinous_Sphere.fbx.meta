@@ -126,7 +126,7 @@ ModelImporter:
     second: cast
   - first:
       74: 7400022
-    second: death
+    second: meh
   - first:
       95: 9500000
     second: //RootNode
@@ -766,7 +766,7 @@ ModelImporter:
       maskSource: {instanceID: 0}
       additiveReferencePoseFrame: 1
     - serializedVersion: 16
-      name: death
+      name: meh
       takeName: Take 001
       internalID: 0
       firstFrame: 415

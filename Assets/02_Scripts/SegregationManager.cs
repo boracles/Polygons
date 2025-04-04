@@ -6,7 +6,7 @@ using System.Collections.Generic;
 
 public class SegregationManager : MonoBehaviour
 {
-    [Header(("Grid Size"))]
+    [Header("Grid Size")]
     public int width = 20;
     public int height = 20;
 
@@ -14,29 +14,29 @@ public class SegregationManager : MonoBehaviour
     public GameObject blackSpherePrefab;
     public GameObject whiteCubePrefab;
     
-    [Header(("Thresholds"))]
+    [Header("Thresholds")]
     [Range(0f, 1f)] public float blackThreshold = 0.33f;
     [Range(0f, 1f)] public float whiteThreshold = 0.33f;
-    
+
     [Header("UI")]
     public TMP_Text statusText;
     public float autoRoundInterval = 1f; 
-
-    // 내부 관리
-    private int[,] board;   // 0=빈칸, 1=검정 구, 2=흰색 큐브
+    
+    private int[,] board;   // 0=빈칸, 1=황, 2=백
     private GameObject[,] agentObjects;
     private bool isAutoRunning = false;
     private int roundCount = 0;
     private Coroutine autoCoroutine = null;
 
     void Start()
-    { 
+    {
         InitBoard();
         UpdateStatusText();
     }
-    
+
     public void InitBoard()
     {
+        // 기존 보드 정리
         if(board != null)
         {
             for(int x = 0; x < width; x++)
@@ -55,6 +55,7 @@ public class SegregationManager : MonoBehaviour
         agentObjects = new GameObject[width, height];
         roundCount = 0;
 
+        // 랜덤 초기화
         for(int x = 0; x < width; x++)
         {
             for(int z = 0; z < height; z++)
@@ -62,8 +63,7 @@ public class SegregationManager : MonoBehaviour
                 float rand = Random.value;
                 if(rand < 0.3f)
                 {
-                    // 빈 칸
-                    board[x,z] = 0;
+                    board[x,z] = 0; // 빈칸
                 }
                 else
                 {
@@ -80,287 +80,288 @@ public class SegregationManager : MonoBehaviour
                 }
             }
         }
-
-        // 초기 만족/불만족 설정
-        for(int x=0; x<width; x++)
-        {
-            for(int z=0; z<height; z++)
-            {
-                if(board[x,z] != 0)
-                {
-                    bool sat = IsSatisfied(x,z);
-                    SetAgentSatisfied(x,z, sat);
+        
+        // 모든 위치(x,z)에 대해
+        for (int x = 0; x < width; x++) {
+            for (int z = 0; z < height; z++) {
+                if (board[x, z] != 0) {
+                    var st = EvaluateSatisfactionState(x, z);
+                    SetAgentSatisfactionState(x, z, st);
                 }
             }
         }
     }
-
     
-    // 에이전트 생성 함수
     void InstantiateAgent(GameObject prefab, int x, int z, int color)
     {
         GameObject agent = Instantiate(prefab, new Vector3(x,0.5f,-z), Quaternion.identity);
         agentObjects[x,z] = agent;
         
-        // 색깔 정보
         Agent agentComp = agent.GetComponent<Agent>();
         if(agentComp != null)
         {
-            agentComp.color = color; // 1=검정, 2=흰색
+            agentComp.color = color;
         }
     }
     
-    // 순차적으로 불만족자를 한 명씩 이동
-    IEnumerator DoOneRoundSequential()
+    IEnumerator DoOneRoundAll()
     {
         roundCount++;
-        int moveCount = 0;
-        
-        while(true)
+        int moveCountInThisRound = 0;
+
+        // 불만족자 목록
+        List<(int x,int z)> unsatisfiedList = CollectUnsatisfiedList();
+        if(unsatisfiedList.Count==0)
         {
-            // 불만족자 수집
-            List<(int x, int z)> unsatisfiedList = new List<(int, int)>();
-            for(int x=0; x<width; x++)
-            {
-                for(int z=0; z<height; z++)
-                {
-                    if(board[x,z] == 0) continue;
-                    if(!IsSatisfied(x,z))
-                    {
-                        unsatisfiedList.Add((x,z));
-                    }
-                }
-            }
-            
-            // 불만족자가 하나도 없으면 -> 이 라운드 종료
-            if(unsatisfiedList.Count == 0)
-            {
-                break; 
-            }
-            
-            // 첫 번째 불만족자만 이동 (혹은 랜덤 한 명)
-            var (oldX, oldZ) = unsatisfiedList[0];
-            if(board[oldX, oldZ] == 0) 
-            {
-                // 혹시 이미 이동되었으면 패스
-            }
-            else
-            {
-                int color = board[oldX, oldZ];
-                
-                // Hit Reaction 애니메이션: 불만족 상태이므로
-                SetAgentSatisfied(oldX, oldZ, false);
-                yield return new WaitForSeconds(0.2f);
-                
-                Vector2Int? candidate = FindRandomCandidate(color);
-                if(candidate.HasValue)
-                {
-                    moveCount++;
-                    Vector2Int c = candidate.Value;
+            // 불만족자가 없으면 바로 종료
+            yield break;
+        }
+        
+        bool anyMoved = false;
 
-                    yield return StartCoroutine(MoveAgentLerp(oldX, oldZ, c.x, c.y, 0.2f));
-                    
-                    bool nowSat = IsSatisfied(c.x, c.y);
-                    SetAgentSatisfied(c.x, c.y, nowSat);
-                }
-            }
+        // unsatisfiedList의 모든 에이전트 순회 (순차든 랜덤이든)
+        foreach(var (oldX, oldZ) in unsatisfiedList)
+        {
+            // 혹시 이미 이동된 에이전트(좌표가 0이 됨 등)
+            if(board[oldX,oldZ]==0) continue;
 
-            // 이동 후, 잠깐 대기
+            // 불만족 Hit Reaction
+            SetAgentUnSatisfied(oldX, oldZ);
+            yield return new WaitForSeconds(0.2f);
+
+            bool success = false;
+            yield return StartCoroutine(TryMoveOne(oldX, oldZ, (didMove)=>{
+                success = didMove;
+            }));
+
+            if(success)
+            {
+                anyMoved=true;
+                moveCountInThisRound++;
+            }
             yield return new WaitForSeconds(0.1f);
         }
         
-        UpdateStatusText(moveCount);
-    }
-    
-    IEnumerator MoveAgentLerp(int oldX, int oldZ, int newX, int newZ, float lerpDuration)
-    {
-       int color = board[oldX, oldZ];
-       
-               // 1) 에이전트/오브젝트 가져오기
-               GameObject agent = agentObjects[oldX, oldZ];
-               if(agent == null) yield break; // 혹시 null이면 중단
-       
-               // 2) 보드 갱신(배열에서 old 자리 비우고 new 자리 차지)
-               board[oldX, oldZ] = 0;
-               board[newX, newZ] = color;
-       
-               // 3) agentObjects 갱신
-               agentObjects[oldX, oldZ] = null;
-               agentObjects[newX, newZ] = agent;
-       
-               // 4) Lerp 동작 (시작-끝 위치 계산)
-               Vector3 startPos = agent.transform.position;               // 현재 위치
-               Vector3 endPos   = new Vector3(newX, 0.5f, -newZ);         // 목표 위치
-       
-               float elapsed = 0f;
-               while(elapsed < lerpDuration)
-               {
-                   elapsed += Time.deltaTime;
-                   float t = Mathf.Clamp01(elapsed / lerpDuration);
-                   agent.transform.position = Vector3.Lerp(startPos, endPos, t);
-                   yield return null;
-               }
-               // 마지막에 위치 확정
-               agent.transform.position = endPos;
-    }
+        UpdateStatusText(moveCountInThisRound);
 
-    /// <summary>
-    /// 에이전트의 Animator에서 isSatisfied = true/false
-    /// </summary>
-    void SetAgentSatisfied(int x, int z, bool satisfied)
-    {
-        GameObject agent = agentObjects[x,z];
-        if(agent == null) return;
-        
-        Agent agentComp = agent.GetComponent<Agent>();
-        if(agentComp != null)
+        // 만약 아무도 이동 안 했다면 => 안정 상태로 간주하고 종료
+        if(!anyMoved)
         {
-            agentComp.currentState = satisfied 
-                ? Agent.SatisfactionState.Satisfied 
-                : Agent.SatisfactionState.UnSatisfied;
-        }
-        
-        Animator anim = agent.GetComponent<Animator>();
-        if(anim != null)
-        {
-            anim.SetBool("isSatisfied", satisfied);
+            yield break;
         }
     }
     
-    bool IsSatisfied(int x, int z)
+    List<(int x, int z)> CollectUnsatisfiedList()
     {
-        if(board[x,z] == 0) return true; // 빈 칸이면 스킵 or 만족 취급
-        
-        GameObject agent = agentObjects[x,z];
-        if(agent == null) return true;
-
-        Agent agentComp = agent.GetComponent<Agent>();
-        if(agentComp == null) return true;
-
-        int myColor = agentComp.color; // 1 or 2
-        int sameCount = 0;
-        int totalNeighbors = 0;
-
-        for(int nx = x-1; nx <= x+1; nx++)
-        {
-            for(int nz = z-1; nz <= z+1; nz++)
-            {
-                if(nx == x && nz == z) continue;
-                if(nx<0 || nx>=width || nz<0 || nz>=height) continue;
-
-                if(board[nx,nz] != 0)
-                {
-                    totalNeighbors++;
-                    if(board[nx,nz] == myColor)
-                    {
-                        sameCount++;
-                    }
-                }
-            }
-        }
-
-        if(totalNeighbors == 0)
-        {
-            // 이웃이 없으면 ratio=1f로 보고 SetStateByRatio(1f)
-            agentComp.SetStateByRatio(1f);
-            return true; // => Manager 입장에서는 “만족했다”고 판단
-        }
-
-        float ratio = (float)sameCount / totalNeighbors;
-        bool satisfied;
-        if(myColor == 1) // 검정
-        {
-            satisfied = ratio >= blackThreshold;
-        }
-        else // 흰색
-        {
-            satisfied = ratio >= whiteThreshold;
-        }
-
-        // Agent에 ratio 전달, 내부 state도 업데이트
-        agentComp.SetStateByRatio(ratio);
-        return satisfied;
-    }
-
-    Vector2Int? FindRandomCandidate(int color)
-    {
-        List<Vector2Int> candidates = new List<Vector2Int>();
-
+        List<(int x, int z)> results = new List<(int, int)>();
         for(int x=0; x<width; x++)
         {
             for(int z=0; z<height; z++)
             {
-                if(board[x,z] == 0)
+                if(board[x,z] == 0) continue;
+                
+                if(!IsSatisfied(x,z))
                 {
-                    if(IsSatisfiedIf(color, x, z))
+                    results.Add((x,z));
+                }
+            }
+        }
+        return results;
+    }
+    
+    IEnumerator TryMoveOne(int oldX, int oldZ, System.Action<bool> onFinish)
+    {
+        int color = board[oldX, oldZ];
+        Vector2Int? candidate = FindRandomCandidate(color);
+        if(!candidate.HasValue)
+        {
+            // 이동 실패
+            onFinish?.Invoke(false);
+            yield break;
+        }
+        // 이동 후보가 있으면 => 이동 코루틴도 기다림
+        Vector2Int c=candidate.Value;
+        yield return StartCoroutine(MoveAgentAndRecalc(oldX, oldZ, c.x, c.y, 0.2f));
+        onFinish?.Invoke(true);
+    }
+    
+    IEnumerator MoveAgentAndRecalc(int oldX, int oldZ, int newX, int newZ, float lerpDuration)
+    {
+        int color = board[oldX, oldZ];
+        GameObject ag = agentObjects[oldX, oldZ];
+        if(ag == null) yield break;
+
+        // 보드, agentObjects 갱신
+        board[oldX, oldZ] = 0;
+        board[newX, newZ] = color;
+        agentObjects[oldX, oldZ] = null;
+        agentObjects[newX, newZ] = ag;
+        
+        Vector3 startPos = ag.transform.position;
+        Vector3 endPos = new Vector3(newX, 0.5f, -newZ);
+
+        float elapsed=0f;
+        while(elapsed < lerpDuration)
+        {
+            elapsed+=Time.deltaTime;
+            float t=Mathf.Clamp01(elapsed/lerpDuration);
+            ag.transform.position = Vector3.Lerp(startPos,endPos,t);
+            yield return null;
+        }
+        ag.transform.position = endPos;
+
+        // 이동 후 만족도 재계산
+        var newState = EvaluateSatisfactionState(newX,newZ);
+        SetAgentSatisfactionState(newX,newZ, newState);
+    }
+
+    void SetAgentUnSatisfied(int x,int z)
+    {
+        GameObject ag=agentObjects[x,z];
+        if(!ag) return;
+        Agent agentComp=ag.GetComponent<Agent>();
+        if(agentComp)
+        {
+            agentComp.currentState=Agent.SatisfactionState.UnSatisfied;
+            // agentComp.UpdateAnimator();
+        }
+    }
+    
+    void SetAgentSatisfactionState(int x,int z,Agent.SatisfactionState st)
+    {
+        GameObject ag=agentObjects[x,z];
+        if(!ag) return;
+        Agent agentComp=ag.GetComponent<Agent>();
+        if(agentComp)
+        {
+            agentComp.SetState(st);
+        }
+    }
+    
+    Agent.SatisfactionState EvaluateSatisfactionState(int x,int z)
+    {
+        if(board[x,z]==0) return Agent.SatisfactionState.Satisfied; 
+        int c=board[x,z];
+        int sameCount=0, totalNeighbors=0;
+        for(int nx=x-1; nx<=x+1; nx++)
+        {
+            for(int nz=z-1; nz<=z+1; nz++)
+            {
+                if(nx==x && nz==z) continue;
+                if(nx<0||nx>=width||nz<0||nz>=height) continue;
+                if(board[nx,nz]!=0)
+                {
+                    totalNeighbors++;
+                    if(board[nx,nz]==c) sameCount++;
+                }
+            }
+        }
+        if(totalNeighbors==0)
+        {
+            // 이웃없음 => Meh
+            return Agent.SatisfactionState.Meh;
+        }
+        float ratio=(float)sameCount/totalNeighbors;
+        float threshold=(c==1)?blackThreshold:whiteThreshold;
+        if(ratio<threshold)
+        {
+            return Agent.SatisfactionState.UnSatisfied;
+        }
+        else if(ratio>=1.0f)
+        {
+            return Agent.SatisfactionState.Meh;
+        }
+        else
+        {
+            return Agent.SatisfactionState.Satisfied;
+        }
+    }
+    
+    bool IsSatisfiedIf(int color,int x,int z)
+    {
+        int sameCount=0, totalNeighbors=0;
+        for(int nx=x-1; nx<=x+1; nx++)
+        {
+            for(int nz=z-1; nz<=z+1; nz++)
+            {
+                if(nx==x && nz==z) continue;
+                if(nx<0||nx>=width||nz<0||nz>=height) continue;
+                if(board[nx,nz]!=0)
+                {
+                    totalNeighbors++;
+                    if(board[nx,nz]==color) sameCount++;
+                }
+            }
+        }
+        if(totalNeighbors==0) return true; // Meh => 이동 가능
+        float ratio=(float)sameCount/totalNeighbors;
+        float threshold=(color==1)?blackThreshold:whiteThreshold;
+        return (ratio>=threshold);
+    }
+    
+    Vector2Int? FindRandomCandidate(int color)
+    {
+        List<Vector2Int> cands= new List<Vector2Int>();
+        for(int x=0; x<width; x++)
+        {
+            for(int z=0; z<height; z++)
+            {
+                if(board[x,z]==0)
+                {
+                    if(IsSatisfiedIf(color,x,z))
                     {
-                        candidates.Add(new Vector2Int(x,z));
+                        cands.Add(new Vector2Int(x,z));
                     }
                 }
             }
         }
-
-        if(candidates.Count > 0)
+        if(cands.Count>0)
         {
-            return candidates[Random.Range(0, candidates.Count)];
+            return cands[Random.Range(0,cands.Count)];
         }
         return null;
     }
-
-    bool IsSatisfiedIf(int color, int x, int z)
+    
+    bool IsSatisfied(int x,int z)
     {
-        int sameCount = 0;
-        int totalNeighbors = 0;
-        
-        for(int nx = x-1; nx <= x+1; nx++)
+        int c=board[x,z];
+        int sameCount=0, totalNeighbors=0;
+        for(int nx=x-1; nx<=x+1; nx++)
         {
-            for(int nz = z-1; nz <= z+1; nz++)
+            for(int nz=z-1; nz<=z+1; nz++)
             {
-                if(nx == x && nz == z) continue;
-                if(nx<0 || nx>=width || nz<0 || nz>=height) continue;
-
-                if(board[nx,nz] != 0)
+                if(nx==x && nz==z) continue;
+                if(nx<0||nx>=width||nz<0||nz>=height) continue;
+                if(board[nx,nz]!=0)
                 {
                     totalNeighbors++;
-                   if(board[nx,nz] == color)
-                   { 
-                       sameCount++;
-                   }
+                    if(board[nx,nz]==c) sameCount++;
                 }
             }
         }
-        
-        if(totalNeighbors == 0) return true; // 이웃이 없으면 만족
+        if(totalNeighbors==0) return true; // 이웃없음 => 만족
 
-        float ratio = (float)sameCount / totalNeighbors;
-        if(color == 1) // 검정
-        {
-            return (ratio >= blackThreshold);
-        }
-        else // 흰색
-        {
-            return (ratio >= whiteThreshold);
-        }
+        float ratio=(float)sameCount/totalNeighbors;
+        float threshold=(c==1)?blackThreshold:whiteThreshold;
+        return (ratio>=threshold);
     }
 
-    private void UpdateStatusText(int movedCount = 0)
+    private void UpdateStatusText(int movedCount=0)
     {
-        if(statusText != null)
+        if(statusText!=null)
         {
-            int blackCount = 0;
-            int whiteCount = 0;
+            int blackCount=0,whiteCount=0;
             for(int x=0; x<width; x++)
             {
                 for(int z=0; z<height; z++)
                 {
-                    if(board[x,z] == 1) blackCount++;
-                    else if(board[x,z] == 2) whiteCount++;
+                    if(board[x,z]==1) blackCount++;
+                    else if(board[x,z]==2) whiteCount++;
                 }
             }
-
-            statusText.text = 
-                $"Round: {roundCount}\n" +
-                $"Blacks: {blackCount}, Whites: {whiteCount}\n" +
+            statusText.text=
+                $"Round: {roundCount}\n"+
+                $"Blacks: {blackCount}, Whites: {whiteCount}\n"+
                 $"Moved This Round: {movedCount}";
         }
     }
@@ -369,19 +370,20 @@ public class SegregationManager : MonoBehaviour
     {
         while(isAutoRunning)
         {
-            yield return StartCoroutine(DoOneRoundSequential());
+            // 한 라운드 실행
+            yield return StartCoroutine(DoOneRoundAll());
             yield return new WaitForSeconds(autoRoundInterval);
         }
     }
-    
+
     public void OnClickNew()
     {
-        isAutoRunning = false;
+        isAutoRunning=false;
         StopAllCoroutines();
-        if(autoCoroutine != null)
+        if(autoCoroutine!=null)
         {
             StopCoroutine(autoCoroutine);
-            autoCoroutine = null;
+            autoCoroutine=null;
         }
         InitBoard();
         UpdateStatusText(0);
@@ -389,19 +391,18 @@ public class SegregationManager : MonoBehaviour
 
     public void OnClickStart()
     {
-        isAutoRunning = !isAutoRunning;
+        isAutoRunning=!isAutoRunning;
         if(isAutoRunning)
         {
-            autoCoroutine = StartCoroutine(AutoRunCoroutine());
+            autoCoroutine=StartCoroutine(AutoRunCoroutine());
         }
         else
         {
-            if(autoCoroutine != null)
+            if(autoCoroutine!=null)
             {
                 StopCoroutine(autoCoroutine);
-                autoCoroutine = null;
+                autoCoroutine=null;
             }
         }
     }
 }
-
