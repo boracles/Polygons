@@ -22,8 +22,16 @@ public class SegregationManager : MonoBehaviour
     public TMP_Text statusText;
     public float autoRoundInterval = 1f; 
     
-    private int[,] board;   // 0=빈칸, 1=황, 2=백
+    [Header("Ratios")]
+    [Range(0f, 1f)] public float blackRatio = 0.35f;
+    [Range(0f, 1f)] public float whiteRatio = 0.35f;
+    [Range(0f, 1f)] public float emptyRatio = 0.3f;
+    
+    // 보드 상태 : 0(빈칸), 1(노랑), 2(하양)
+    public int[,] board;
+    // 위치(x, z)에 해당하는 agent 참조
     private GameObject[,] agentObjects;
+    
     private bool isAutoRunning = false;
     private int roundCount = 0;
     private Coroutine autoCoroutine = null;
@@ -61,27 +69,27 @@ public class SegregationManager : MonoBehaviour
             for(int z = 0; z < height; z++)
             {
                 float rand = Random.value;
-                if(rand < 0.3f)
+                
+                if(rand < emptyRatio)
                 {
                     board[x,z] = 0; // 빈칸
                 }
+                // blackRatio 범위이면 검정(1)
+                else if(rand < emptyRatio + blackRatio)
+                {
+                    board[x,z] = 1;  
+                    InstantiateAgent(blackSpherePrefab, x, z, 1);
+                }
+                // 나머지는 흰색(2)
                 else
                 {
-                    if(rand < 0.65f)
-                    {
-                        board[x,z] = 1;  // 검정
-                        InstantiateAgent(blackSpherePrefab, x, z, 1);
-                    }
-                    else
-                    {
-                        board[x,z] = 2;  // 흰색
-                        InstantiateAgent(whiteCubePrefab, x, z, 2);
-                    }
+                    board[x,z] = 2;  
+                    InstantiateAgent(whiteCubePrefab, x, z, 2);
                 }
             }
         }
         
-        // 모든 위치(x,z)에 대해
+        // 새로 생성된 모든 에이전트에 대해 초기 SatisfactionState 설정
         for (int x = 0; x < width; x++) {
             for (int z = 0; z < height; z++) {
                 if (board[x, z] != 0) {
@@ -127,7 +135,7 @@ public class SegregationManager : MonoBehaviour
 
             // 불만족 Hit Reaction
             SetAgentUnSatisfied(oldX, oldZ);
-            yield return new WaitForSeconds(0.2f);
+            yield return new WaitForSeconds(0.05f);
 
             bool success = false;
             yield return StartCoroutine(TryMoveOne(oldX, oldZ, (didMove)=>{
@@ -139,7 +147,7 @@ public class SegregationManager : MonoBehaviour
                 anyMoved=true;
                 moveCountInThisRound++;
             }
-            yield return new WaitForSeconds(0.1f);
+            yield return new WaitForSeconds(0.05f);
         }
         
         UpdateStatusText(moveCountInThisRound);
@@ -181,7 +189,7 @@ public class SegregationManager : MonoBehaviour
         }
         // 이동 후보가 있으면 => 이동 코루틴도 기다림
         Vector2Int c=candidate.Value;
-        yield return StartCoroutine(MoveAgentAndRecalc(oldX, oldZ, c.x, c.y, 0.2f));
+        yield return StartCoroutine(MoveAgentAndRecalc(oldX, oldZ, c.x, c.y, 0.05f));
         onFinish?.Invoke(true);
     }
     
@@ -223,7 +231,6 @@ public class SegregationManager : MonoBehaviour
         if(agentComp)
         {
             agentComp.currentState=Agent.SatisfactionState.UnSatisfied;
-            // agentComp.UpdateAnimator();
         }
     }
     
@@ -404,5 +411,66 @@ public class SegregationManager : MonoBehaviour
                 autoCoroutine=null;
             }
         }
+    }
+    
+    /// <summary>
+    /// 마우스로 수동으로 에이전트가 옮겨진 경우에 호출
+    /// </summary>
+    public void OnAgentManualMove(Agent agent, int oldX, int oldZ, int newX, int newZ)
+    {
+        // 보드 및 agentObjects에서 옮기기 전/후 자리 업데이트
+        board[oldX, oldZ] = 0;
+        agentObjects[oldX, oldZ] = null;
+
+        int color = agent.color;  // 1=검정, 2=흰색
+        board[newX, newZ] = color;
+        agentObjects[newX, newZ] = agent.gameObject;
+
+        // 에이전트 실제 transform 위치도 스냅
+        Vector3 newWorldPos = new Vector3(newX, 0.5f, -newZ);
+        agent.transform.position = newWorldPos;
+
+        // 재계산: 이 에이전트만 새 위치에서 만족도 다시 평가
+        var newState = EvaluateSatisfactionState(newX, newZ);
+        agent.SetState(newState);
+        
+        // 이웃들 좌표 범위 [newX-1..newX+1], [newZ-1..newZ+1] 등
+        for (int nx = newX - 1; nx <= newX + 1; nx++)
+        {
+            for (int nz = newZ - 1; nz <= newZ + 1; nz++)
+            {
+                if (nx < 0 || nx >= width || nz < 0 || nz >= height) continue;
+                if (board[nx, nz] != 0)
+                {
+                    var neighborObj = agentObjects[nx, nz];
+                    if (neighborObj != null)
+                    {
+                        Agent neighborAgent = neighborObj.GetComponent<Agent>();
+                        if (neighborAgent != null)
+                        {
+                            var st = EvaluateSatisfactionState(nx, nz);
+                            neighborAgent.SetState(st);
+                        }
+                    }
+                }
+            }
+        }
+        
+        UpdateStatusText();
+    }
+    
+    public (int,int) FindAgentPosition(Agent agent)
+    {
+        for(int x = 0; x < width; x++)
+        {
+            for(int z = 0; z < height; z++)
+            {
+                if(agentObjects[x,z] == agent.gameObject)
+                {
+                    return (x,z);
+                }
+            }
+        }
+        return (-1,-1); // 못찾으면
     }
 }
