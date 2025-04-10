@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 
 [RequireComponent(typeof(RectTransform))]
-public class HandleDragHandler : MonoBehaviour, IDragHandler
+public class HandleDragHandlerMulti : MonoBehaviour, IDragHandler
 {
     public MultiSegmentSlider parentSlider;
     private RectTransform rt;
@@ -14,20 +14,26 @@ public class HandleDragHandler : MonoBehaviour, IDragHandler
 
     public void OnDrag(PointerEventData eventData)
     {
-        // bar 영역 내에서 마우스 좌표 -> local 좌표로 변환
         Vector2 localPoint;
         RectTransformUtility.ScreenPointToLocalPointInRectangle(
-            parentSlider.bar, eventData.position, eventData.pressEventCamera, out localPoint
+            parentSlider.bar,
+            eventData.position,
+            eventData.pressEventCamera,
+            out localPoint
         );
+        
+        float barWidth = parentSlider.bar.rect.width;
+        if (barWidth <= 0f) return;
+        
+        float newRatio = localPoint.x / barWidth;
 
-        // handle1인지 handle2인지 구분 위해, name으로 분기
         if (gameObject.name.Contains("Handle1"))
         {
-            parentSlider.OnHandle1Drag(localPoint.x);
+            parentSlider.OnHandle1Drag(newRatio);
         }
         else
         {
-            parentSlider.OnHandle2Drag(localPoint.x);
+            parentSlider.OnHandle2Drag(newRatio);
         }
     }
 }

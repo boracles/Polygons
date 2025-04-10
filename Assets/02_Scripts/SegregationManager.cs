@@ -1,6 +1,5 @@
 using UnityEngine;
 using System.Collections;
-using UnityEngine.UI; 
 using TMPro;
 using System.Collections.Generic;
 
@@ -26,16 +25,24 @@ public class SegregationManager : MonoBehaviour
     [Range(0f, 1f)] public float blackRatio = 0.35f;
     [Range(0f, 1f)] public float whiteRatio = 0.35f;
     [Range(0f, 1f)] public float emptyRatio = 0.3f;
+    public float lowerThreshold = 0.2f; 
+    public float upperThreshold = 0.8f; 
     
-    // 보드 상태 : 0(빈칸), 1(노랑), 2(하양)
     public int[,] board;
-    // 위치(x, z)에 해당하는 agent 참조
     private GameObject[,] agentObjects;
     
     private bool isAutoRunning = false;
     private int roundCount = 0;
     private Coroutine autoCoroutine = null;
 
+    void Awake()
+    {
+        if (board == null)
+        {
+            InitBoard();
+        }
+    }
+    
     void Start()
     {
         InitBoard();
@@ -116,8 +123,7 @@ public class SegregationManager : MonoBehaviour
     {
         roundCount++;
         int moveCountInThisRound = 0;
-
-        // 불만족자 목록
+        
         List<(int x,int z)> unsatisfiedList = CollectUnsatisfiedList();
         if(unsatisfiedList.Count==0)
         {
@@ -126,8 +132,7 @@ public class SegregationManager : MonoBehaviour
         }
         
         bool anyMoved = false;
-
-        // unsatisfiedList의 모든 에이전트 순회 (순차든 랜덤이든)
+        
         foreach(var (oldX, oldZ) in unsatisfiedList)
         {
             // 혹시 이미 이동된 에이전트(좌표가 0이 됨 등)
@@ -142,7 +147,7 @@ public class SegregationManager : MonoBehaviour
                 success = didMove;
             }));
 
-            if(success)
+            if(success) // 성공적응로 이동
             {
                 anyMoved=true;
                 moveCountInThisRound++;
@@ -150,9 +155,10 @@ public class SegregationManager : MonoBehaviour
             yield return new WaitForSeconds(0.05f);
         }
         
+        // 라운드 정보 업데이트 
         UpdateStatusText(moveCountInThisRound);
 
-        // 만약 아무도 이동 안 했다면 => 안정 상태로 간주하고 종료
+        // 만약 아무도 이동 안 했다면 => "더 이상 변화가 없음"으로 간주하고 종료
         if(!anyMoved)
         {
             yield break;
@@ -195,9 +201,18 @@ public class SegregationManager : MonoBehaviour
     
     IEnumerator MoveAgentAndRecalc(int oldX, int oldZ, int newX, int newZ, float lerpDuration)
     {
-        int color = board[oldX, oldZ];
+        // 안정성 체크
+        if (board == null) yield break;
+        if (agentObjects[oldX, oldZ] == null) yield break;
+        
+        // 해당 자리가 이미 비었는지(=이동/삭제되었는지) 확인
+        if (board[oldX, oldZ] == 0) yield break;
+
         GameObject ag = agentObjects[oldX, oldZ];
-        if(ag == null) yield break;
+        if (ag == null) yield break; // 이미 Destroy 되었다면 중단
+        
+        // 이동로직 진행
+        int color = board[oldX, oldZ];
 
         // 보드, agentObjects 갱신
         board[oldX, oldZ] = 0;
@@ -221,6 +236,30 @@ public class SegregationManager : MonoBehaviour
         // 이동 후 만족도 재계산
         var newState = EvaluateSatisfactionState(newX,newZ);
         SetAgentSatisfactionState(newX,newZ, newState);
+    }
+    
+    // 현재 보드상의 모든 에이전트에 대해 SatisfactionState를 다시 계산하여 갱신
+    public void RecalcAllAgentsState()
+    {
+        if (board == null)
+        {
+            Debug.LogWarning("board가 아직 생성되지 않았습니다. InitBoard() 이후에 호출하세요.");
+            return;
+        }
+        
+        for (int x = 0; x < width; x++)
+        {
+            for (int z = 0; z < height; z++)
+            {
+                if (board[x, z] != 0)
+                {
+                    var st = EvaluateSatisfactionState(x, z);
+                    SetAgentSatisfactionState(x, z, st);
+                }
+            }
+        }
+        
+        UpdateStatusText();
     }
 
     void SetAgentUnSatisfied(int x,int z)
@@ -270,16 +309,14 @@ public class SegregationManager : MonoBehaviour
         }
         float ratio=(float)sameCount/totalNeighbors;
         float threshold=(c==1)?blackThreshold:whiteThreshold;
-        if(ratio<threshold)
+        if (ratio < lowerThreshold || ratio > upperThreshold)
         {
+            // 불만족
             return Agent.SatisfactionState.UnSatisfied;
-        }
-        else if(ratio>=1.0f)
-        {
-            return Agent.SatisfactionState.Meh;
         }
         else
         {
+            // 만족
             return Agent.SatisfactionState.Satisfied;
         }
     }
@@ -413,9 +450,7 @@ public class SegregationManager : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// 마우스로 수동으로 에이전트가 옮겨진 경우에 호출
-    /// </summary>
+    // 마우스로 수동으로 에이전트가 옮겨진 경우에 호출
     public void OnAgentManualMove(Agent agent, int oldX, int oldZ, int newX, int newZ)
     {
         // 보드 및 agentObjects에서 옮기기 전/후 자리 업데이트
