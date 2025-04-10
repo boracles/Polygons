@@ -31,10 +31,9 @@ public class SegregationManager : MonoBehaviour
     public int[,] board;
     private GameObject[,] agentObjects;
     
-    // 각 라운드별 분리도 값을 보관
+    public SimpleUILineGraph lineGraph;
     public List<float> segregationHistory = new List<float>();
-    public GraphDrawer myGraphDrawer;
-    
+
     private bool isAutoRunning = false;
     private int roundCount = 0;
     private Coroutine autoCoroutine = null;
@@ -134,7 +133,8 @@ public class SegregationManager : MonoBehaviour
             // 불만족자가 없으면 바로 종료
             float segRate = CalculateSegregationRate();
             segregationHistory.Add(segRate);
-            myGraphDrawer.UpdateGraph(segregationHistory);
+            
+            lineGraph.UpdateGraph(segregationHistory);
             Debug.Log($"Round {roundCount}, No unsatisfied. SegRate={segRate:F3}");
             yield break;
         }
@@ -168,7 +168,8 @@ public class SegregationManager : MonoBehaviour
             // 라운드 종료 시점에 분리도 측정
             float segRate = CalculateSegregationRate();
             segregationHistory.Add(segRate);
-            myGraphDrawer.UpdateGraph(segregationHistory);
+            
+            lineGraph.UpdateGraph(segregationHistory);
             Debug.Log($"After Round {roundCount}, SegregationRate={segRate:F3}");
             yield break;
         }
@@ -176,7 +177,8 @@ public class SegregationManager : MonoBehaviour
         // 라운드 종료 시 또 측정
         float segRate2 = CalculateSegregationRate();
         segregationHistory.Add(segRate2);
-        myGraphDrawer.UpdateGraph(segregationHistory);
+        
+        lineGraph.UpdateGraph(segregationHistory);
         Debug.Log($"After Round {roundCount} (some moved), SegregationRate={segRate2:F3}");
     }
     
