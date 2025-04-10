@@ -31,6 +31,10 @@ public class SegregationManager : MonoBehaviour
     public int[,] board;
     private GameObject[,] agentObjects;
     
+    // 각 라운드별 분리도 값을 보관
+    public List<float> segregationHistory = new List<float>();
+    public GraphDrawer myGraphDrawer;
+    
     private bool isAutoRunning = false;
     private int roundCount = 0;
     private Coroutine autoCoroutine = null;
@@ -128,6 +132,10 @@ public class SegregationManager : MonoBehaviour
         if(unsatisfiedList.Count==0)
         {
             // 불만족자가 없으면 바로 종료
+            float segRate = CalculateSegregationRate();
+            segregationHistory.Add(segRate);
+            myGraphDrawer.UpdateGraph(segregationHistory);
+            Debug.Log($"Round {roundCount}, No unsatisfied. SegRate={segRate:F3}");
             yield break;
         }
         
@@ -135,10 +143,8 @@ public class SegregationManager : MonoBehaviour
         
         foreach(var (oldX, oldZ) in unsatisfiedList)
         {
-            // 혹시 이미 이동된 에이전트(좌표가 0이 됨 등)
             if(board[oldX,oldZ]==0) continue;
-
-            // 불만족 Hit Reaction
+            
             SetAgentUnSatisfied(oldX, oldZ);
             yield return new WaitForSeconds(0.05f);
 
@@ -147,7 +153,7 @@ public class SegregationManager : MonoBehaviour
                 success = didMove;
             }));
 
-            if(success) // 성공적응로 이동
+            if(success)
             {
                 anyMoved=true;
                 moveCountInThisRound++;
@@ -155,14 +161,23 @@ public class SegregationManager : MonoBehaviour
             yield return new WaitForSeconds(0.05f);
         }
         
-        // 라운드 정보 업데이트 
         UpdateStatusText(moveCountInThisRound);
-
-        // 만약 아무도 이동 안 했다면 => "더 이상 변화가 없음"으로 간주하고 종료
+        
         if(!anyMoved)
         {
+            // 라운드 종료 시점에 분리도 측정
+            float segRate = CalculateSegregationRate();
+            segregationHistory.Add(segRate);
+            myGraphDrawer.UpdateGraph(segregationHistory);
+            Debug.Log($"After Round {roundCount}, SegregationRate={segRate:F3}");
             yield break;
         }
+        
+        // 라운드 종료 시 또 측정
+        float segRate2 = CalculateSegregationRate();
+        segregationHistory.Add(segRate2);
+        myGraphDrawer.UpdateGraph(segregationHistory);
+        Debug.Log($"After Round {roundCount} (some moved), SegregationRate={segRate2:F3}");
     }
     
     List<(int x, int z)> CollectUnsatisfiedList()
@@ -508,4 +523,46 @@ public class SegregationManager : MonoBehaviour
         }
         return (-1,-1); // 못찾으면
     }
+    
+    // 1에 가까울수록 분리도↑, 0.5 주변이면 섞임, 0에 가까우면 독특한 상태
+    public float CalculateSegregationRate()
+    {
+        int agentCount = 0;
+        float sumRatio = 0f;
+
+        for (int x = 0; x < width; x++)
+        {
+            for (int z = 0; z < height; z++)
+            {
+                int c = board[x,z];
+                if(c == 0) continue; // 빈칸은 무시
+
+                int same = 0;
+                int totalN = 0;
+                for(int nx = x-1; nx <= x+1; nx++)
+                {
+                    for(int nz = z-1; nz <= z+1; nz++)
+                    {
+                        if(nx == x && nz == z) continue;
+                        if(nx<0||nx>=width||nz<0||nz>=height) continue;
+                        if(board[nx,nz] != 0)
+                        {
+                            totalN++;
+                            if(board[nx,nz] == c) same++;
+                        }
+                    }
+                }
+
+                // 이웃이 없다면(고립), 1로 두어 "자기 혼자 모여 있다" 처럼 간주
+                float ratio = (totalN == 0) ? 1f : ((float)same / totalN);
+
+                sumRatio += ratio;
+                agentCount++;
+            }
+        }
+
+        if(agentCount == 0) return 0f; // 전부 빈칸이면 0
+        return sumRatio / agentCount;
+    }
+
 }
