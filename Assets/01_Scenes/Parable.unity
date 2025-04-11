@@ -174,7 +174,7 @@ MonoBehaviour:
   lineRenderer: {fileID: 565026783}
   graphArea: {fileID: 926920576}
   endLabel: {fileID: 722944964}
-  ringSize: 100
+  ringSize: 135
   spacing: 10
 --- !u!1 &41571326
 GameObject:
