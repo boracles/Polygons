@@ -12,6 +12,19 @@ public class SimpleUILineGraph : MonoBehaviour
     [SerializeField] private int ringSize = 100;
     [SerializeField] private float spacing = 10f;
     
+    // 선 초기화 
+    public void ClearGraph()
+    {
+        if(lineRenderer != null)
+        {
+            // 다중 세그먼트 프로퍼티 초기화
+            lineRenderer.Segments = new List<Vector2[]>();
+            lineRenderer.RelativeSize = false;
+        }
+        if(endLabel != null)
+            endLabel.text = "";
+    }
+    
     public void UpdateGraph(List<float> data, float currentRate)
     {
         // 데이터 없는 경우
@@ -36,13 +49,11 @@ public class SimpleUILineGraph : MonoBehaviour
         int countToDraw = Mathf.Min(totalCount, ringSize);
         int startIndex = totalCount - countToDraw;
         
-        // 다중 세그먼트 리스트
-        List<List<Vector2>> segmentList = new List<List<Vector2>>();
-        segmentList.Add(new List<Vector2>()); // 첫 세그먼트 생성
-        
         float graphHeight = graphArea.rect.height;
-        int prevRingIndex = -1;
+        List<List<Vector2>> segmentList = new List<List<Vector2>>();
+        segmentList.Add(new List<Vector2>()); // 첫 세그먼트
         
+        int prevRingIndex = -1;
         for(int i = 0; i < countToDraw; i++)
         {
             int globalIndex = startIndex + i;

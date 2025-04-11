@@ -156,7 +156,7 @@ public class SegregationManager : MonoBehaviour
             
             // 불만족 표시
             SetAgentUnSatisfied(oldX, oldZ);
-            yield return new WaitForSeconds(0.05f);
+            yield return new WaitForSeconds(0.03f);
 
             bool success = false;
             // 이동 시도
@@ -178,7 +178,7 @@ public class SegregationManager : MonoBehaviour
                 lineGraph.UpdateGraph(segregationHistory, segRateMid);
 
             // 약간의 대기
-            yield return new WaitForSeconds(0.05f);
+            yield return new WaitForSeconds(0.03f);
         }
         
         // 라운드 정보 갱신
@@ -550,6 +550,7 @@ public class SegregationManager : MonoBehaviour
         }
         InitBoard();
         UpdateStatusText(0);
+        lineGraph.ClearGraph();
     }
 
     public void OnClickStart()
