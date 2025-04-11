@@ -436,35 +436,59 @@ public class SegregationManager : MonoBehaviour
         {
             for(int z=0; z<height; z++)
             {
-                int c = board[x,z];
-                if(c == 0) continue; // 빈칸 제외
-
-                int same=0, totalN=0;
-                for(int nx=x-1; nx<=x+1; nx++)
+                if (board[x, z] != 0)
                 {
-                    for(int nz=z-1; nz<=z+1; nz++)
+                    // 색깔(노랑 = 1, 하양=2)
+                    int myColor = board[x,z];
+                    
+                    // 이웃 계산
+                    int sameCount = 0;
+                    int totalN=0;
+
+                    for (int nx = x - 1; nx <= x + 1; nx++)
                     {
-                        if(nx==x && nz==z) continue;
-                        if(nx<0||nx>=width||nz<0||nz>=height) continue;
-                        if(board[nx,nz] != 0)
+                        for (int nz = z - 1; nz <= z + 1; nz++)
                         {
-                            totalN++;
-                            if(board[nx,nz] == c) same++;
+                            if (nx == x && nz == z) continue; // 자기 자신 제외
+                            if (nx < 0 || nx >= width || nz < 0 || nz >= height) continue;
+
+                            // occupant가 있는 경우
+                            if (board[nx, nz] != 0)
+                            {
+                                totalN++;
+                                if (board[nx, nz] == myColor)
+                                {
+                                    sameCount++;
+                                }
+                            }
                         }
                     }
-                }
 
-                // 이웃 없으면(고립) => ratio=1
-                float ratio = (totalN==0)? 1f : ((float)same / totalN);
-                sumRatio += ratio;
-                agentCount++;
+                    // 이웃이 전혀 없는 경우(=0)라면 임시로 sameness=1 정도로 처리
+                    float ratio = (totalN == 0) ? 1f : (float)sameCount / totalN;
+
+                    sumRatio += ratio; 
+                    agentCount++;
+                }
             }
         }
-
+            
+        // 에이전트가 전혀 없으면 0 리턴
         if(agentCount == 0) return 0f;
-        return sumRatio / agentCount; 
-    }
+            
+        // 먼저 전체 average_sameness 계산
+        float averageSameness = sumRatio / agentCount;
 
+        // 니키 케이스 스타일의 분리도 산출
+        float segregation = (averageSameness - 0.5f) * 2f;
+        
+        // 니키 케이스 예제에서는 음수면 0% 정도로 취급.
+        if(segregation < 0f) segregation = 0f;
+
+        // 1.0 넘어갈 수 있으나, 그 자체로 "강한 분리"로 보면 됨
+        return segregation;
+    } 
+        
     private void UpdateStatusText(int movedCount=0)
     {
         if(statusText!=null)
@@ -485,13 +509,33 @@ public class SegregationManager : MonoBehaviour
         }
     }
 
+    private bool IsDone()
+    {
+        // 불만족자가 하나도 없으면 시뮬레이션 종료
+        return (CollectUnsatisfiedList().Count == 0);
+    }
+    
     IEnumerator AutoRunCoroutine()
     {
         while(isAutoRunning)
         {
             yield return StartCoroutine(DoOneRoundAll());
+            
+            // 분리도 계산하고 그래프 갱신
+            float segRate = CalculateSegregationRate();
+            segregationHistory.Add(segRate);
+            lineGraph.UpdateGraph(segregationHistory);
+
+            // 라운드 끝났는데 만약 불만족자도 없고 완전히 끝나면 -> break
+            if(IsDone()) 
+            {
+                break;
+            }
+
+            // 다음 라운드까지 대기
             yield return new WaitForSeconds(autoRoundInterval);
         }
+        // 여기까지 오면 AutoRunCoroutine이 종료됨 => 그래프는 더 이상 업데이트 안 됨
     }
 
     public void OnClickNew()
