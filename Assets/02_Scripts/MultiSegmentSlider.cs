@@ -94,13 +94,13 @@ public class MultiSegmentSlider : MonoBehaviour
         
         if (ratioText != null)
         {
-            // 0.5 → 50, 0.2 → 20 식으로 표기
             float spherePerc = sphereRatio * 100f;
             float cubePerc   = cubeRatio * 100f;    
             float emptyPerc  = emptyRatio * 100f;   
 
             ratioText.text = 
-                $"the sphere:cube ratio is <color=#FF0000>{spherePerc:0}:{cubePerc:0}</color>, board is <color=#FF0000>{emptyPerc:0}% empty</color>";
+                $"the sphere:cube ratio is <color=#B71D1D>{spherePerc:0}:{cubePerc:0}</color>, " +
+                $"board is <color=#B71D1D>{emptyPerc:0}% empty</color>";
         }
         
         SegregationManager mgr = FindObjectOfType<SegregationManager>();
