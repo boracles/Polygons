@@ -34,6 +34,12 @@ public class SegregationManager : MonoBehaviour
     public SimpleUILineGraph lineGraph;
     public List<float> segregationHistory = new List<float>();
 
+    private int iterationCountPerPhase = 50;
+    public float updateInterval = 0.2f;
+
+    private bool inPhase;
+    private int phaseNum=0;
+    
     private bool isAutoRunning = false;
     private int roundCount = 0;
     private Coroutine autoCoroutine = null;
@@ -490,7 +496,7 @@ public class SegregationManager : MonoBehaviour
     } 
         
     private void UpdateStatusText(int movedCount=0)
-    {
+    { 
         if(statusText!=null)
         {
             int blackCount=0,whiteCount=0;

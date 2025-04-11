@@ -86,34 +86,42 @@ public class SimpleUILineGraph : MonoBehaviour
             int countToDraw = ringSize;
             int startIndex  = totalCount - countToDraw;
 
+            float graphHeight = graphArea.rect.height;
             List<List<Vector2>> segmentList = new List<List<Vector2>>();
             segmentList.Add(new List<Vector2>());
-            int prevRingIndex= -1;
             
+            int prevRingIndex = -1;
             for(int i=0; i<countToDraw; i++)
             {
-                int globalIndex= startIndex + i;
-                int ringIndex  = globalIndex % ringSize;
+                int globalIndex = startIndex + i;
+                int ringIndex   = globalIndex % ringSize;
 
-                if(i>0 && ringIndex< prevRingIndex)
+                // 래핑 감지 -> “과거 세그먼트 전부 지우고” 새 세그먼트 시작
+                if(i>0 && ringIndex < prevRingIndex)
                 {
+                    // ★★★ 핵심 변경 ★★★
+                    // 이전 세그먼트는 전부 제거 (즉시 과거 선 삭제)
+                    segmentList.Clear();
+
+                    // 새로 리스트를 다시 생성
+                    segmentList = new List<List<Vector2>>();
                     segmentList.Add(new List<Vector2>());
                 }
-                prevRingIndex= ringIndex;
 
-                float x= ringIndex* spacing;
-                float y= data[globalIndex]* graphH;
-                segmentList[segmentList.Count -1].Add(new Vector2(x,y));
+                prevRingIndex = ringIndex;
+
+                float x= ringIndex * spacing;
+                float y= data[globalIndex] * graphHeight;
+                segmentList[segmentList.Count - 1].Add(new Vector2(x, y));
             }
-
-            // 변환
-            List<Vector2[]> finalSegments= new List<Vector2[]>(segmentList.Count);
-            for(int s=0; s< segmentList.Count; s++)
+// 변환
+            List<Vector2[]> finalSegments = new List<Vector2[]>(segmentList.Count);
+            for(int s=0; s<segmentList.Count; s++)
             {
                 finalSegments.Add(segmentList[s].ToArray());
             }
-            lineRenderer.Segments= finalSegments;
-            lineRenderer.RelativeSize= false;
+            lineRenderer.Segments = finalSegments;
+            lineRenderer.RelativeSize = false;
 
             // 마지막 점
             if(endLabel!=null && segmentList.Count>0)
