@@ -35,7 +35,7 @@ public class SegregationManager : MonoBehaviour
     public List<float> segregationHistory = new List<float>();
 
     private int iterationCountPerPhase = 50;
-    public float updateInterval = 0.2f;
+    public float updateInterval = 0.02f;
 
     private bool inPhase;
     private int phaseNum=0;

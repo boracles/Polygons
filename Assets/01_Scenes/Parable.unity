@@ -2818,6 +2818,7 @@ MonoBehaviour:
   upperThreshold: 0.8
   lineGraph: {fileID: 30425361}
   segregationHistory: []
+  updateInterval: 0.02
 --- !u!1 &1615958189
 GameObject:
   m_ObjectHideFlags: 0
