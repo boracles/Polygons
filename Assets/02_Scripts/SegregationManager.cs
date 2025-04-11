@@ -527,8 +527,9 @@ public class SegregationManager : MonoBehaviour
             lineGraph.UpdateGraph(segregationHistory);
 
             // 라운드 끝났는데 만약 불만족자도 없고 완전히 끝나면 -> break
-            if(IsDone()) 
+            if(IsDone())
             {
+                isAutoRunning = false;
                 break;
             }
 
