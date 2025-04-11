@@ -9,7 +9,7 @@ public class SimpleUILineGraph : MonoBehaviour
     public RectTransform graphArea;
     public TMP_Text endLabel;
     
-    [SerializeField] private int ringSize = 100;
+    [SerializeField] private int ringSize = 200;
     [SerializeField] private float spacing = 10f;
     
     // 선 초기화 
@@ -17,7 +17,6 @@ public class SimpleUILineGraph : MonoBehaviour
     {
         if(lineRenderer != null)
         {
-            // 다중 세그먼트 프로퍼티 초기화
             lineRenderer.Segments = new List<Vector2[]>();
             lineRenderer.RelativeSize = false;
         }
@@ -44,53 +43,85 @@ public class SimpleUILineGraph : MonoBehaviour
             return;
         }
         
-        // ringSize 로직
         int totalCount = data.Count;
-        int countToDraw = Mathf.Min(totalCount, ringSize);
-        int startIndex = totalCount - countToDraw;
+        float graphH = graphArea.rect.height;
         
-        float graphHeight = graphArea.rect.height;
-        List<List<Vector2>> segmentList = new List<List<Vector2>>();
-        segmentList.Add(new List<Vector2>()); // 첫 세그먼트
-        
-        int prevRingIndex = -1;
-        for(int i = 0; i < countToDraw; i++)
+        if(totalCount < ringSize)
         {
-            int globalIndex = startIndex + i;
-            int ringIndex   = globalIndex % ringSize;
+            // 하나의 세그먼트
+            List<Vector2> singleSeg = new List<Vector2>(totalCount);
 
-            // 랩핑 감지 -> 새 세그먼트
-            if (i > 0 && ringIndex < prevRingIndex)
-            {
-                segmentList.Add(new List<Vector2>());
-            }
-            prevRingIndex = ringIndex;
+            float maxX = (ringSize - 1) * spacing; 
             
-            float x = ringIndex * spacing;
-            float y = data[globalIndex] * graphHeight;
-            segmentList[segmentList.Count - 1].Add(new Vector2(x, y));
-        }
-        
-        List<Vector2[]> finalSegments = new List<Vector2[]>(segmentList.Count);
-        for(int s = 0; s < segmentList.Count; s++)
-        {
-            finalSegments.Add(segmentList[s].ToArray());
-        }
-
-        lineRenderer.Segments = finalSegments;
-        lineRenderer.RelativeSize = false;
-        
-        // 마지막 점 레이블
-        if(endLabel != null && segmentList.Count > 0)
-        {
-            // 마지막 세그먼트
-            List<Vector2> lastSegment = segmentList[segmentList.Count - 1];
-            if(lastSegment.Count > 0)
+            for(int i=0; i<totalCount; i++)
             {
-                Vector2 lastPoint = lastSegment[lastSegment.Count - 1];
-                string labelText = Mathf.RoundToInt(currentRate * 100f) + "%";
-                endLabel.text = labelText;
-                endLabel.rectTransform.anchoredPosition = lastPoint + new Vector2(20f, 0f);
+                // i*(spacing) 대신 "i*(maxX/(ringSize-1))"와 동일
+                float x = i * (maxX / (ringSize - 1));
+                float y = data[i]*graphH;
+                singleSeg.Add(new Vector2(x,y));
+            }
+
+            List<Vector2[]> finalSegs = new List<Vector2[]>();
+            finalSegs.Add(singleSeg.ToArray());
+
+            lineRenderer.Segments = finalSegs;
+            lineRenderer.RelativeSize = false;
+            
+            // 마지막 점 레이블
+            if(endLabel!=null && singleSeg.Count>0)
+            {
+                Vector2 lastPoint= singleSeg[singleSeg.Count-1];
+                endLabel.text= Mathf.RoundToInt(currentRate*100f)+"%";
+                endLabel.rectTransform.anchoredPosition= lastPoint + new Vector2(20f,0f);
+            }
+        }
+        else
+        {
+            // (B) 데이터 수 >= ringSize => ring(원형) 로직
+            int countToDraw = ringSize;
+            int startIndex  = totalCount - countToDraw;
+
+            List<List<Vector2>> segmentList = new List<List<Vector2>>();
+            segmentList.Add(new List<Vector2>());
+            int prevRingIndex = -1;
+            
+            for(int i=0; i<countToDraw; i++)
+            {
+                int globalIndex= startIndex + i;
+                int ringIndex  = globalIndex % ringSize;
+
+                // 래핑 감지 -> 새 세그먼트
+                if(i>0 && ringIndex<prevRingIndex)
+                {
+                    segmentList.Add(new List<Vector2>());
+                }
+                prevRingIndex= ringIndex;
+
+                float x= ringIndex* spacing; 
+                float y= data[globalIndex]* graphH;
+                segmentList[segmentList.Count-1].Add(new Vector2(x,y));
+            }
+
+            // List<List<Vector2>> -> List<Vector2[]>
+            List<Vector2[]> finalSegments = new List<Vector2[]>(segmentList.Count);
+            for(int s=0; s<segmentList.Count; s++)
+            {
+                finalSegments.Add(segmentList[s].ToArray());
+            }
+
+            lineRenderer.Segments = finalSegments;
+            lineRenderer.RelativeSize = false;
+
+            // 마지막 점 레이블
+            if(endLabel!=null && segmentList.Count>0)
+            {
+                var lastSeg= segmentList[segmentList.Count-1];
+                if(lastSeg.Count>0)
+                {
+                    Vector2 lastPoint= lastSeg[lastSeg.Count-1];
+                    endLabel.text= Mathf.RoundToInt(currentRate*100f)+"%";
+                    endLabel.rectTransform.anchoredPosition= lastPoint+ new Vector2(20f,0f);
+                }
             }
         }
     }
