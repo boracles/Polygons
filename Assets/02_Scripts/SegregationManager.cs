@@ -111,7 +111,7 @@ public class SegregationManager : MonoBehaviour
         float initialRate = CalculateSegregationRate();
         segregationHistory.Add(initialRate);
         if(lineGraph != null)
-            lineGraph.UpdateGraph(segregationHistory);
+            lineGraph.UpdateGraph(segregationHistory, initialRate);
     }
     
     void InstantiateAgent(GameObject prefab, int x, int z, int color)
@@ -140,7 +140,7 @@ public class SegregationManager : MonoBehaviour
             segregationHistory.Add(segRate);
             
             if(lineGraph != null)
-                lineGraph.UpdateGraph(segregationHistory);
+                lineGraph.UpdateGraph(segregationHistory, segRate);
             
             Debug.Log($"Round {roundCount}, No unsatisfied. SegRate={segRate:F3}");
             yield break;
@@ -175,7 +175,7 @@ public class SegregationManager : MonoBehaviour
             segregationHistory.Add(segRateMid);
 
             if(lineGraph != null)
-                lineGraph.UpdateGraph(segregationHistory);
+                lineGraph.UpdateGraph(segregationHistory, segRateMid);
 
             // 약간의 대기
             yield return new WaitForSeconds(0.05f);
@@ -191,7 +191,7 @@ public class SegregationManager : MonoBehaviour
             segregationHistory.Add(segRate);
             
             if(lineGraph != null)
-                lineGraph.UpdateGraph(segregationHistory);
+                lineGraph.UpdateGraph(segregationHistory, segRate);
             
             Debug.Log($"After Round {roundCount}, SegregationRate={segRate:F3}");
             yield break;
@@ -202,7 +202,7 @@ public class SegregationManager : MonoBehaviour
         segregationHistory.Add(segRate2);
         
         if(lineGraph != null)
-            lineGraph.UpdateGraph(segregationHistory);
+            lineGraph.UpdateGraph(segregationHistory, segRate2);
         
         Debug.Log($"After Round {roundCount} (some moved), SegregationRate={segRate2:F3}");
     }
@@ -524,7 +524,7 @@ public class SegregationManager : MonoBehaviour
             // 분리도 계산하고 그래프 갱신
             float segRate = CalculateSegregationRate();
             segregationHistory.Add(segRate);
-            lineGraph.UpdateGraph(segregationHistory);
+            lineGraph.UpdateGraph(segregationHistory, segRate);
 
             // 라운드 끝났는데 만약 불만족자도 없고 완전히 끝나면 -> break
             if(IsDone())
@@ -616,7 +616,7 @@ public class SegregationManager : MonoBehaviour
         segregationHistory.Add(segRate);
 
         if(lineGraph != null)
-            lineGraph.UpdateGraph(segregationHistory);
+            lineGraph.UpdateGraph(segregationHistory, segRate);
     }
     
     public (int,int) FindAgentPosition(Agent agent)
