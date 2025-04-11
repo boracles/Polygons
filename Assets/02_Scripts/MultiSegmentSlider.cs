@@ -99,8 +99,8 @@ public class MultiSegmentSlider : MonoBehaviour
             float emptyPerc  = emptyRatio * 100f;   
 
             ratioText.text = 
-                $"the sphere:cube ratio is <color=#B71D1D>{spherePerc:0}:{cubePerc:0}</color>, " +
-                $"board is <color=#B71D1D>{emptyPerc:0}% empty</color>";
+                $"the sphere:cube ratio is <color=#B71C1C>{spherePerc:0}:{cubePerc:0}</color>, " +
+                $"board is <color=#B71C1C>{emptyPerc:0}% empty</color>";
         }
         
         SegregationManager mgr = FindObjectOfType<SegregationManager>();

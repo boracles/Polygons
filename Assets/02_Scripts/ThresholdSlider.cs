@@ -76,8 +76,8 @@ public class ThresholdSlider : MonoBehaviour
         if (infoText != null)
         {
             infoText.text =
-                $"i'll move if <color=#B71D1D><{lowPercent:0}%</color> " +
-                $"or <color=#B71D1D>>{highPercent:0}%</color> of my neighbors are like me";
+                $"i'll move if <color=#B71C1C><{lowPercent:0}%</color> " +
+                $"or <color=#B71C1C>>{highPercent:0}%</color> of my neighbors are like me";
         }
         
         SegregationManager mgr = FindObjectOfType<SegregationManager>();
