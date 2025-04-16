@@ -9320,7 +9320,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   waypoints:
   - {fileID: 5306419}
-  waypointThreshold: 1
+  waypointThreshold: 0.5
   baby: {fileID: 2623571790456893003}
   strollerSeat: {fileID: 537303956}
 --- !u!54 &7083225488589860335
