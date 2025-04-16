@@ -10,6 +10,8 @@ public class MotherAI : MonoBehaviour
     public BabyController baby;          
     public Transform strollerSeat; 
 
+    public StrollerAI stroller;
+    
     private NavMeshAgent agent;
     private int currentIndex = 0;
     private Vector3 startPosition;
@@ -74,6 +76,17 @@ public class MotherAI : MonoBehaviour
         
         // 1초 기다렸다가 돌아감
         yield return new WaitForSeconds(1.0f);
+       
+        // 아기 이동 후 유모차 출발
+        if (baby != null && strollerSeat != null)
+        {
+            baby.MoveToStroller(strollerSeat);
+    
+            if (stroller != null)
+            {
+                stroller.StartMoving();
+            }
+        }
         
         isReturning = true;
         agent.isStopped = false;
