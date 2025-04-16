@@ -552,6 +552,11 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &87766297 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 6001948635395211028, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+  m_PrefabInstance: {fileID: 3421621649141393239}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &117539821
 GameObject:
   m_ObjectHideFlags: 0
@@ -1845,10 +1850,11 @@ Transform:
   m_GameObject: {fileID: 392711596}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.238, z: 4.796}
-  m_LocalScale: {x: 0.4, y: 0.4, z: 0.4}
-  m_ConstrainProportionsScale: 1
-  m_Children: []
+  m_LocalPosition: {x: 0, y: 0.238, z: 4.866}
+  m_LocalScale: {x: 0.4, y: 0.4, z: 0.55268}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 537303956}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &398574451
@@ -2390,6 +2396,37 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &537303955
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 537303956}
+  m_Layer: 0
+  m_Name: StrollerSeat
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &537303956
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 537303955}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0.489, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 392711600}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &557840982
 GameObject:
@@ -3730,7 +3767,7 @@ MonoBehaviour:
   m_OverrideTileSize: 0
   m_TileSize: 256
   m_OverrideVoxelSize: 0
-  m_VoxelSize: 0.16666667
+  m_VoxelSize: 0.06666667
   m_MinRegionArea: 2
   m_NavMeshData: {fileID: 23800000, guid: 4be01401c39f044418a1e71eea13a0a1, type: 2}
   m_BuildHeightMesh: 0
@@ -9094,6 +9131,18 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 4303771461621692456, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
   m_PrefabInstance: {fileID: 3421621649141393239}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &2623571790456893003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 87766297}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a5275b38d9a5c304d9016ac57148cf45, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1001 &3421621649141393239
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -9161,7 +9210,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 6001948635395211028, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2623571790456893003}
   m_SourcePrefab: {fileID: 100100000, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
 --- !u!1001 &4287734096319447982
 PrefabInstance:
@@ -9242,7 +9294,7 @@ NavMeshAgent:
   m_Enabled: 1
   m_AgentTypeID: 0
   m_Radius: 0.5
-  m_Speed: 3.5
+  m_Speed: 1.5
   m_Acceleration: 8
   avoidancePriority: 50
   m_AngularSpeed: 120
@@ -9269,6 +9321,8 @@ MonoBehaviour:
   waypoints:
   - {fileID: 5306419}
   waypointThreshold: 1
+  baby: {fileID: 2623571790456893003}
+  strollerSeat: {fileID: 537303956}
 --- !u!54 &7083225488589860335
 Rigidbody:
   m_ObjectHideFlags: 0
