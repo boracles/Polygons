@@ -26,9 +26,9 @@ public class SimpleUILineGraph : MonoBehaviour
     
     public void StartNewPhaseGraph(List<float> data, float currentRate)
     {
-        // 1) 이전 라인 지우기
+        // 이전 라인 지우기
         ClearGraph();
-        // 2) 새 데이터 그리기
+        // 새 데이터 그리기
         UpdateGraph(data, currentRate);
     }
     
@@ -82,7 +82,7 @@ public class SimpleUILineGraph : MonoBehaviour
         }
         else
         {
-            // 데이터 >= ringSize -> ring(원형)
+            // 데이터 >= ringSize -> ring
             int countToDraw = ringSize;
             int startIndex  = totalCount - countToDraw;
 
@@ -99,8 +99,7 @@ public class SimpleUILineGraph : MonoBehaviour
                 // 래핑 감지 -> “과거 세그먼트 전부 지우고” 새 세그먼트 시작
                 if(i>0 && ringIndex < prevRingIndex)
                 {
-                    // ★★★ 핵심 변경 ★★★
-                    // 이전 세그먼트는 전부 제거 (즉시 과거 선 삭제)
+                    // 이전 세그먼트는 전부 제거
                     segmentList.Clear();
 
                     // 새로 리스트를 다시 생성
@@ -114,7 +113,7 @@ public class SimpleUILineGraph : MonoBehaviour
                 float y= data[globalIndex] * graphHeight;
                 segmentList[segmentList.Count - 1].Add(new Vector2(x, y));
             }
-// 변환
+
             List<Vector2[]> finalSegments = new List<Vector2[]>(segmentList.Count);
             for(int s=0; s<segmentList.Count; s++)
             {

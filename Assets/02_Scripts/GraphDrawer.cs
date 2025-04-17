@@ -21,16 +21,13 @@ public class GraphDrawer : MonoBehaviour
         tex.filterMode = FilterMode.Point;
         ClearTexture(); // 배경 초기화
         rawImage.texture = tex;
-    }
-
-    /// <summary>
-    /// dataList: 라운드별 segregationRate (0~1)
-    /// </summary>
+    } 
+    
+    // dataList: 라운드별 segregationRate (0~1)
     public void UpdateGraph(List<float> dataList)
     {
         ClearTexture();
-        // dataList.Count가 graphWidth를 넘어가면 X축 스케일 조정이 필요
-        // 간단히 "가장 오른쪽 끝"이 최신 데이터로 그리는 예시
+        // 가장 오른쪽 끝이 최신 데이터
 
         int maxCount = Mathf.Min(dataList.Count, graphWidth);
         // Y축은 0~1를 graphHeight 범위로 변환
@@ -46,8 +43,7 @@ public class GraphDrawer : MonoBehaviour
 
             int y0 = (int)Mathf.Clamp(currVal * (graphHeight-1), 0, graphHeight-1);
             int y1 = (int)Mathf.Clamp(prevVal * (graphHeight-1), 0, graphHeight-1);
-
-            // 선을 그린다 (직선 보간)
+            
             DrawLine(tex, x0, y0, x1, y1, lineColor);
         }
 
@@ -62,11 +58,8 @@ public class GraphDrawer : MonoBehaviour
         tex.SetPixels(bg);
         tex.Apply();
     }
-
-    /// <summary>
-    /// (x0,y0) ~ (x1,y1) 픽셀 선 긋기 (Bresenham 또는 단순 DDA)
-    /// 여기서는 간단한 DDA
-    /// </summary>
+    
+    // (x0,y0) ~ (x1,y1) 픽셀 선 긋기
     void DrawLine(Texture2D t, int x0, int y0, int x1, int y1, Color col)
     {
         int dx = x1 - x0;

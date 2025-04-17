@@ -3,7 +3,7 @@ using TMPro;
 
 public class ThresholdSlider : MonoBehaviour
 {
-    [Header("UI References")]
+    [Header("UI")]
     public RectTransform bar;
     public RectTransform handleLow;
     public RectTransform handleHigh;

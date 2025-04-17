@@ -4,7 +4,7 @@ using UnityEngine.EventSystems;
 [RequireComponent(typeof(RectTransform))]
 public class HandleDragHandlerThreshold : MonoBehaviour, IDragHandler
 {
-    public ThresholdSlider parentSlider; // threshold용
+    public ThresholdSlider parentSlider;
     private RectTransform rt;
 
     void Awake()

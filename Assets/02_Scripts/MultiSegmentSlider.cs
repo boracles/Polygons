@@ -14,7 +14,7 @@ public class MultiSegmentSlider : MonoBehaviour
     public RectTransform handle2;          // 두 번째 핸들
 
     [Header("Output")]
-    public TMP_Text ratioText;                 // 비율 표시
+    public TMP_Text ratioText;          // 비율
     
     private float handle1Ratio = 0.2f;
     private float handle2Ratio = 0.7f;

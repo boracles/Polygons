@@ -9,8 +9,6 @@ public class AgentDragHandler : MonoBehaviour
     private Agent myAgent;    // 이 오브젝트의 Agent 컴포넌트
     private SegregationManager manager;
     
-    // 마우스 입력으로 이동할 평면(지면)이 어디인지 레이어로 구분 가능
-    // 예시로 LayerMask를 받거나, 그냥 y=0 Plane을 사용해도 됨.
     public LayerMask groundMask;
 
     // 기존 보드상의 좌표 (x, z)
@@ -73,8 +71,6 @@ public class AgentDragHandler : MonoBehaviour
         Vector2Int? cell = GetNearestEmptyCell();
         if (!cell.HasValue)
         {
-            // 만약 빈 칸이 없다면, 원래 자리로 돌아가거나
-            // 혹은 가장 가까운 빈칸 찾아 이동 (케이스별로 처리)
             ReturnToOldPosition();
             return;
         }
@@ -96,7 +92,7 @@ public class AgentDragHandler : MonoBehaviour
 
         Vector3 pos = transform.position;
         int x = Mathf.RoundToInt(pos.x);
-        int z = Mathf.RoundToInt(-pos.z); // manager가 -z로 배치했는지 확인 필요
+        int z = Mathf.RoundToInt(-pos.z); // manager가 -z로 배치했는지 확인
 
         if (x < 0 || x >= manager.width ||
             z < 0 || z >= manager.height)
