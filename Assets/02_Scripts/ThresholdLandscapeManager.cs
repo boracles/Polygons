@@ -1,0 +1,251 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class ThresholdLandscapeManager : MonoBehaviour
+{
+    [Header("Grid Size")]
+    public int width = 20;
+    public int height = 20;
+
+    [Header("Prefabs")]
+    public GameObject mainPrefab; 
+    public GameObject targetPrefab;
+
+    [Header("Initial Ratios (0~1)")]
+    [Range(0, 1)] public float emptyRatio  = 0.30f;
+    [Range(0, 1)] public float blackRatio  = 0.35f;   // Main 표본용
+    [Range(0, 1)] public float whiteRatio  = 0.35f;   // Target 표본용
+    
+    private int[,] board;                        // 0 빈 / 1 검 / 2 흰
+    private GameObject[,] agentObjects;          // Agent 프리팹 참조
+    private Zone[] zones;                        // 25개 Zone (4×4 cells)
+
+    private const int CELLS_PER_ZONE = 16;       // 4×4 묶음
+    private const float ALLOW_VALUE   = 2f;      // bias × targetNear <= 2 → 행복
+
+    private Coroutine simCoroutine;
+    void Awake()
+    {
+        board        = new int[width, height];
+        agentObjects = new GameObject[width, height];
+
+        int zonesX = width  / 4;
+        int zonesZ = height / 4;
+        zones = new Zone[zonesX * zonesZ];
+        for (int i = 0; i < zones.Length; i++)
+            zones[i] = new Zone(i, CELLS_PER_ZONE);  
+    }
+
+    void Start()
+    {
+        InitBoard();
+    }
+
+    public void OnClickStart()
+    {
+        if (simCoroutine == null)   // 정지 상태 → 시작
+            simCoroutine = StartCoroutine(SimLoop());
+    }
+    
+    void InitBoard()
+    {
+        // 보드·에이전트 비우기 (재시작 대비)
+        for (int x = 0; x < width; x++)
+        for (int z = 0; z < height; z++)
+        {
+            if (agentObjects[x, z] != null)
+                Destroy(agentObjects[x, z]);
+            board[x, z] = 0;
+            agentObjects[x, z] = null;
+        }
+
+        // 존 멤버 클리어
+        foreach (var z in zones) z.ClearMembers();
+
+        // 무작위 배치
+        for (int x = 0; x < width; x++)
+        for (int z = 0; z < height; z++)
+        {
+            float rnd = Random.value;
+            if (rnd < emptyRatio)       continue;           // 빈칸
+            else if (rnd < emptyRatio + blackRatio) board[x, z] = 1;  // 검
+            else                                    board[x, z] = 2;  // 흰
+
+            GameObject prefab = (board[x, z] == 1) ? mainPrefab : targetPrefab;
+            InstantiateAgent(prefab, x, z, board[x, z]);
+        }
+    }
+    
+    IEnumerator SimLoop()
+    {
+        WaitForSeconds tickWait = new WaitForSeconds(0.1f);
+        while (true)
+        {
+            UpdateZones();
+            yield return MoveUnsatisfiedAgents();
+            yield return tickWait;
+        }
+    }
+    
+    // 존 통계 갱신 및 폐쇄 판단
+    void UpdateZones()
+    {
+        foreach (var z in zones) z.ClearMembers();
+
+        for (int x = 0; x < width; x++)
+        for (int zIdx = 0; zIdx < height; zIdx++)
+        {
+            GameObject obj = agentObjects[x, zIdx];
+            if (!obj) continue;
+            Agent ag = obj.GetComponent<Agent>();
+            int zoneID = (x / 4) + (zIdx / 4) * (width / 4);
+            zones[zoneID].AddMember(ag);
+        }
+
+        foreach (var z in zones)
+        {
+            z.UpdateStats();
+            z.TryClose(); // 닫히면 내부 isClosed true
+        }
+    }
+    
+    // 불만족자 수집 & 이동
+    IEnumerator MoveUnsatisfiedAgents()
+    {
+        List<Vector2Int> unsatisfied = new List<Vector2Int>();
+        for (int x = 0; x < width; x++)
+        for (int z = 0; z < height; z++)
+        {
+            if (board[x, z] == 0) continue;
+            if (!IsSatisfied(x, z)) unsatisfied.Add(new Vector2Int(x, z));
+        }
+
+        // 이동 순회
+        foreach (var pos in unsatisfied)
+        {
+            int oldX = pos.x; int oldZ = pos.y;
+            if (board[oldX, oldZ] == 0) continue; // 이미 이동했을 수 있음
+            Vector2Int? cand = FindCandidate(board[oldX, oldZ]);
+            if (cand.HasValue)
+            {
+                yield return StartCoroutine(MoveAgent(oldX, oldZ, cand.Value.x, cand.Value.y));
+            }
+        }
+    }
+    
+    // -------------------- Agent 평가 --------------------
+    bool IsSatisfied(int x, int z)
+    {
+        Agent ag = agentObjects[x, z].GetComponent<Agent>();
+        if (!ag) return true;
+
+        // 조건 1) bias × targetNear
+        int targetNear = CountNeighborsWithLabel(x, z, Agent.Label.Target);
+        bool condBias = (ag.bias * targetNear) <= ALLOW_VALUE;
+
+        // 조건 2) Zone 상태
+        int zoneID = (x / 4) + (z / 4) * 5;
+        bool condZone = !zones[zoneID].IsClosed || ag.label == Agent.Label.Main;
+
+        return condBias && condZone;
+    }
+
+    int CountNeighborsWithLabel(int x, int z, Agent.Label lbl)
+    {
+        int cnt = 0;
+        for (int nx = x - 1; nx <= x + 1; nx++)
+        for (int nz = z - 1; nz <= z + 1; nz++)
+        {
+            if (nx == x && nz == z) continue;
+            if (nx < 0 || nx >= width || nz < 0 || nz >= height) continue;
+            if (board[nx, nz] == 0) continue;
+            Agent ngb = agentObjects[nx, nz].GetComponent<Agent>();
+            if (ngb && ngb.label == lbl) cnt++;
+        }
+        return cnt;
+    }
+    
+    // -------------------- 빈칸 후보 --------------------
+    Vector2Int? FindCandidate(int color)
+    {
+        List<Vector2Int> list = new();
+        for (int x = 0; x < width; x++)
+        for (int z = 0; z < height; z++)
+        {
+            if (board[x, z] != 0) continue;
+            if (IsSatisfiedIf(color, x, z)) list.Add(new Vector2Int(x, z));
+        }
+        if (list.Count == 0) return null;
+        return list[Random.Range(0, list.Count)];
+    }
+
+    bool IsSatisfiedIf(int color, int x, int z)
+    {
+        // 새 위치에 가정 배치했다고 가정, condBias만 검증
+        int targetNear = 0;
+        for (int nx = x - 1; nx <= x + 1; nx++)
+        for (int nz = z - 1; nz <= z + 1; nz++)
+        {
+            if (nx == x && nz == z) continue;
+            if (nx < 0 || nx >= width || nz < 0 || nz >= height) continue;
+            if (board[nx, nz] == 0) continue;
+            Agent ngb = agentObjects[nx, nz].GetComponent<Agent>();
+            if (ngb && ngb.label == Agent.Label.Target) targetNear++;
+        }
+
+        float biasDummy = (color == 1) ? Random.Range(0.4f, 1f) : Random.Range(0f, 0.3f);
+        bool condBias = (biasDummy * targetNear) <= ALLOW_VALUE;
+
+        int zoneID = (x / 4) + (z / 4) * 5;
+        bool condZone = !zones[zoneID].IsClosed || color == 1; // Main assumed color 1
+
+        return condBias && condZone;
+    }
+
+    // -------------------- 이동 --------------------
+    IEnumerator MoveAgent(int oldX, int oldZ, int newX, int newZ)
+    {
+        GameObject agObj = agentObjects[oldX, oldZ];
+        agentObjects[oldX, oldZ] = null;
+        agentObjects[newX, newZ] = agObj;
+        int c = board[oldX, oldZ];
+        board[oldX, oldZ] = 0;
+        board[newX, newZ] = c;
+
+        Vector3 start = agObj.transform.position;
+        Vector3 end   = new Vector3(newX, 0.5f, -newZ);
+        float t = 0f;
+        while (t < 1f)
+        {
+            t += Time.deltaTime / 0.1f; // 0.1s 이동
+            agObj.transform.position = Vector3.Lerp(start, end, t);
+            yield return null;
+        }
+        agObj.transform.position = end;
+    }
+    
+    // -------------------- 에이전트 생성 --------------------
+    void InstantiateAgent(GameObject prefab, int x, int z, int color)
+    {
+        GameObject agentObj = Instantiate(prefab, new Vector3(x, 0.5f, -z), Quaternion.identity, transform);
+        agentObjects[x, z] = agentObj;
+
+        Agent ag = agentObj.GetComponent<Agent>();
+        if (!ag) return;
+
+        ag.color = color;
+        float r = Random.value;
+        if (r < 0.8f)
+        {
+            ag.label = Agent.Label.Main;
+            ag.bias  = Random.Range(0.4f, 1.0f);
+        }
+        else
+        {
+            ag.label = Agent.Label.Target;
+            ag.bias  = Random.Range(0.0f, 0.3f);
+        }
+    }
+
+}
