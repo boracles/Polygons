@@ -9,7 +9,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 4919127603495585365}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: sphere2_jnt
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -41,7 +41,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2576389296122639689}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: CUBE_CTRL4
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -72,7 +72,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 3003466920135796926}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: CUBE_CTRL2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -104,7 +104,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1444763756694479693}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: CUBE_CTRL
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -136,7 +136,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8491334629516429575}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: sphere4_jnt
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -170,7 +170,8 @@ GameObject:
   - component: {fileID: 4045798946564541165}
   - component: {fileID: 7421987269608823733}
   - component: {fileID: -1898578515391465729}
-  m_Layer: 0
+  - component: {fileID: 9175643220104931648}
+  m_Layer: 9
   m_Name: Target
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -233,6 +234,28 @@ MonoBehaviour:
   bias: 0
   currentState: 2
   color: 0
+--- !u!195 &9175643220104931648
+NavMeshAgent:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3351737530330129455}
+  m_Enabled: 1
+  m_AgentTypeID: -902729914
+  m_Radius: 0.5
+  m_Speed: 3.5
+  m_Acceleration: 8
+  avoidancePriority: 50
+  m_AngularSpeed: 120
+  m_StoppingDistance: 0
+  m_AutoTraverseOffMeshLink: 1
+  m_AutoBraking: 1
+  m_AutoRepath: 1
+  m_Height: 2
+  m_BaseOffset: 0
+  m_WalkableMask: 4294967295
+  m_ObstacleAvoidanceType: 4
 --- !u!1 &3839314223263420576
 GameObject:
   m_ObjectHideFlags: 0
@@ -242,7 +265,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1217934261364433720}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: CUBE_CTRL3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -274,7 +297,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1190487224326722100}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: sphere5_jnt
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -306,7 +329,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2830902519162348298}
   - component: {fileID: 117960651892710334}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: Gelatinous_Sphere
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -406,7 +429,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 7430650284743956213}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: CUBE_CTRL1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -438,7 +461,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8930264827254883149}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: sphere3_jnt
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -470,7 +493,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 3584443661473415474}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: sphere1_jnt
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -502,7 +525,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 3281985018772101592}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: Sphere_ROOT_jnt
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -533,6 +556,22 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 4045798946564541165}
     m_Modifications:
+    - target: {fileID: 1522877087624305814, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 2611995686327606122, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 3598805830774069208, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 4139742119010532937, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
     - target: {fileID: 4303771461621692456, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
       propertyPath: m_LocalScale.x
       value: 0.4
@@ -585,9 +624,45 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 4426647251885914142, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 5589315561850408990, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 5890077614110532823, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
     - target: {fileID: 6001948635395211028, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
       propertyPath: m_Name
       value: Baby
+      objectReference: {fileID: 0}
+    - target: {fileID: 6001948635395211028, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 6303252829522862167, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 6915304555489638047, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 7106812645369013606, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 7229897165785724224, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 8588875686846924534, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: m_Layer
+      value: 9
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
