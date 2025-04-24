@@ -31,6 +31,7 @@ public class ThresholdLandscapeManager : MonoBehaviour
     [SerializeField] float arriveEps      = 0.05f;
     
     HashSet<Vector2Int> occupiedRooms = new HashSet<Vector2Int>();
+    bool IsRoad(int x, int z) => (x % 4 == 0) || (z % 4 == 0);
     
     void Awake()
     {
@@ -242,88 +243,50 @@ public class ThresholdLandscapeManager : MonoBehaviour
     // 에이전트 생성
     void InstantiateAgent(GameObject prefab, int x, int z, int color)
     {
-        GameObject agentObj = Instantiate(prefab,
-            new Vector3(x, 0.5f, -z),
-            Quaternion.identity,
-            transform);
-        
-        Agent ag = agentObj.GetComponent<Agent>();
-        if (ag == null) return;
-        
-        NavMeshAgent nav = agentObj.GetComponent<NavMeshAgent>();
-        if (nav)
-        {
-            if (NavMesh.SamplePosition(agentObj.transform.position, out _, 0.05f, NavMesh.AllAreas))
-            {
-                nav.enabled = true;
-                StartCoroutine(Wander(nav, ag));             // 길 위 → 즉시 Wander
-            }
-            else
-            {
-                nav.enabled = false;                        // 방 안
-                StartCoroutine(WaitAndWalkOut(nav, ag, 5f));     // 5초 기다렸다가 길로
-            }
-        }
-        
-        agentObjects[x, z] = agentObj;
-        ag.color = color;
-        
-        float r = Random.value;
-        if (r < 0.8f)
-        {
-            ag.label = Agent.Label.Main;
-            ag.bias  = Random.Range(0.4f, 1.0f);
-        }
+        GameObject go = Instantiate(prefab, new Vector3(x, .5f, -z), Quaternion.identity, transform);
+        Agent        ag  = go.GetComponent<Agent>();
+        NavMeshAgent nav = go.GetComponent<NavMeshAgent>();
+
+        agentObjects[x, z] = go;
+        board[x, z]        = color;          // 1 또는 2
+
+        // NavMeshAgent는 즉시 ON
+        nav.enabled = true;
+
+        // 방이라면 5초 후 나가도록 예약
+        if (!IsRoad(x, z))
+            StartCoroutine(LeaveRoomAfterDelay(nav, ag, x, z, 5f));
         else
-        {
-            ag.label = Agent.Label.Target;
-            ag.bias  = Random.Range(0.0f, 0.3f);
-        }
+            StartCoroutine(Wander(nav, ag)); // 길이면 바로 Wander
     }
-    
-    IEnumerator WaitAndWalkOut(NavMeshAgent nav, Agent ag, float waitSec)
+
+    IEnumerator LeaveRoomAfterDelay(NavMeshAgent nav, Agent ag,
+        int roomX, int roomZ, float wait)
     {
-        /* 0) 방 안에서 대기 */
-        yield return new WaitForSeconds(waitSec);
+        yield return new WaitForSeconds(wait);
 
-        /* 1) 가장 가까운 빈 길 셀 찾기 */
-        Vector2Int? road = FindNearestFreeRoad(
-            Mathf.RoundToInt(nav.transform.position.x),
-            Mathf.RoundToInt(-nav.transform.position.z), 4);
-
-        if (!road.HasValue)     // 길이 없으면 그냥 방에 남는다
+        // 가장 가까운 길 셀 탐색 (맨해튼 격자 BFS)
+        Vector2Int? dest = FindNearestFreeRoad(roomX, roomZ, 4);
+        if (!dest.HasValue)          // 못 찾으면 그냥 방에 남음
             yield break;
 
-        int gx = road.Value.x, gz = road.Value.y;
+        int gx = dest.Value.x, gz = dest.Value.y;
 
-        /* 2) 셀 점유 예약 (다른 에이전트 진입 차단) */
-        if (board[gx, gz] != 0) yield break;          // 경합 시 실패
-        board[gx, gz]        = (ag.label == Agent.Label.Main) ? 1 : 2;
+        // 보드 예약·해제
+        board[gx, gz]        = board[roomX, roomZ];
         agentObjects[gx, gz] = nav.gameObject;
+        board[roomX, roomZ]  = 0;
+        agentObjects[roomX, roomZ] = null;
 
-        /* 3) 방 셀 해제 */
-        int rx = Mathf.RoundToInt(nav.transform.position.x);
-        int rz = Mathf.RoundToInt(-nav.transform.position.z);
-        board[rx, rz]        = 0;
-        agentObjects[rx, rz] = null;
+        // 길 셀 중심으로 이동
+        Vector3 goal = new Vector3(gx, .5f, -gz);
+        nav.SetDestination(goal);
 
-        /* 4) Nav 꺼두고 Lerp 이동 */
-        nav.enabled = false;
-        Vector3 startPos   = nav.transform.position;
-        Vector3 targetPos  = new Vector3(gx, 0.5f, -gz);
-        float   travelTime = 0.6f, t = 0f;
-
-        while (t < travelTime)
-        {
-            t += Time.deltaTime;
-            nav.transform.position = Vector3.Lerp(startPos, targetPos, t / travelTime);
+        // 도착 대기
+        while (nav.pathPending || nav.remainingDistance > arriveEps)
             yield return null;
-        }
-        nav.transform.position = targetPos;   // 정확히 스냅
 
-        /* 5) Nav 다시 켜고 Wander 재시작 */
-        nav.enabled = true;
-        nav.Warp(targetPos);                  // Nav 내부 좌표 동기화
+        // Wander 재시작
         StartCoroutine(Wander(nav, ag));
     }
 
@@ -357,144 +320,12 @@ public class ThresholdLandscapeManager : MonoBehaviour
     {
         while (nav && nav.isActiveAndEnabled)
         {
-            /* ① 20% 확률로 빈 Room 셀 선택 */
-            if (Random.value < 0.2f)
-            {
-                if (TrySetRoomDestination(nav, ag))   // 성공 시 ‘스냅 대기 루틴’으로 전환
-                    yield break;                      // 이 코루틴 종료
-            }
-
-            /* ② 아니면 길(네브메시) 위에서만 랜덤 산책 */
-            Vector3 randDir = Random.insideUnitSphere * 10f; randDir.y = 0;
+            Vector3 randDir = Random.insideUnitSphere * 8f; randDir.y = 0;
             if (NavMesh.SamplePosition(nav.transform.position + randDir,
-                    out NavMeshHit hit, 10f, NavMesh.AllAreas))
+                    out NavMeshHit hit, 8f, NavMesh.AllAreas))
                 nav.SetDestination(hit.position);
 
             yield return new WaitForSeconds(wanderInterval);
         }
     }
-    
-    bool TrySetRoomDestination(NavMeshAgent nav, Agent ag)
-    {
-        /* (1) 주변 빈 Room 셀 하나 찾기 */
-        Vector2Int? cell = FindRandomEmptyRoomNear(nav.transform.position, 5);
-        if (!cell.HasValue) return false;
-
-        int tx = cell.Value.x, tz = cell.Value.y;
-
-        /* (2) 방 주변 네브메시 위 기준점 선택 (4방향 탐색) */
-        Vector3 roadPos;
-        if (!FindRoadAdjacency(tx, tz, out roadPos)) return false;
-
-        /* 3. 예약 – 방 셀 먼저 선점 (다른 에이전트 진입 봉쇄) */
-        Vector2Int roomPos = new Vector2Int(tx, tz);
-        if (!occupiedRooms.Add(roomPos)) return false; 
-        
-        board[tx, tz] = (ag.label == Agent.Label.Main) ? 1 : 2;
-        agentObjects[tx, tz] = nav.gameObject; 
-
-        /* (4) MoveAgent 에서 옛칸 비우는 로직 재사용 */
-        int ox = Mathf.RoundToInt(nav.transform.position.x);
-        int oz = Mathf.RoundToInt(-nav.transform.position.z);
-        board[ox, oz]        = 0;
-        agentObjects[ox, oz] = null;
-
-        /* (5) NavMeshAgent 목적지 = roadPos */
-        nav.SetDestination(roadPos);
-
-        /* (6) 스냅을 기다리는 코루틴 시작 */
-        StartCoroutine(SnapWhenArrived(nav, ag, tx, tz));
-        return true;
-    }
-
-/* 방 셀로 스냅 */
-    IEnumerator SnapWhenArrived(NavMeshAgent nav, Agent ag, int cellX, int cellZ)
-    {
-        // 길 끝까지 도달할 때까지 대기 
-        while (nav.pathPending || nav.remainingDistance > arriveEps)
-            yield return null;
-
-        /* Nav 다시 켜고 Wander 재시작 */
-        nav.enabled = false;
-        Vector3 targetPos = new Vector3(cellX, 0.5f, -cellZ);
-        Vector3 startPos  = nav.transform.position;
-        float   t         = 0f;
-        const float slide = 0.6f;
-        while (t < slide)
-        {
-            t += Time.deltaTime;
-            nav.transform.position = Vector3.Lerp(startPos, targetPos, t / slide);
-            yield return null;
-        }
-        nav.transform.position = targetPos;
-        
-        // 5초 머무르기
-        yield return new WaitForSeconds(5f);
-        
-        // 가장 가까운 빈 길 셀로 나가기 
-        Vector2Int? road = FindNearestFreeRoad(cellX, cellZ, 4);
-        if (road.HasValue)
-        {
-            int gx = road.Value.x, gz = road.Value.y;
-
-            /* 방 셀 반납 */
-            occupiedRooms.Remove(new Vector2Int(cellX, cellZ));
-            board[cellX, cellZ]        = 0;
-            agentObjects[cellX, cellZ] = null;
-
-            /* 길 셀 점유 */
-            board[gx, gz]        = (ag.label == Agent.Label.Main) ? 1 : 2;
-            agentObjects[gx, gz] = nav.gameObject;
-
-            /* Nav ON + Warp + Wander 재시작 */
-            nav.enabled = true;
-            nav.Warp(new Vector3(gx, 0.5f, -gz));
-            StartCoroutine(Wander(nav, ag));
-        }
-        else
-        {
-            /* 길이 없으면 그대로 방 안에 남지만 예약은 해제 */
-            occupiedRooms.Remove(new Vector2Int(cellX, cellZ));
-        }
-    }
-
-    Vector2Int? FindRandomEmptyRoomNear(Vector3 from, int radius)
-    {
-        int cx = Mathf.RoundToInt(from.x);
-        int cz = Mathf.RoundToInt(-from.z);
-
-        List<Vector2Int> rooms = new();
-        for (int dx = -radius; dx <= radius; dx++)
-        for (int dz = -radius; dz <= radius; dz++)
-        {
-            int x = cx + dx, z = cz + dz;
-            if (x < 0 || x >= width || z < 0 || z >= height) continue;
-
-            /* Room 셀 = 네브메시가 없는(Non-walkable) 곳으로 규정 */
-            if (board[x, z] == 0 &&     // 아직 비어있고
-                !NavMesh.SamplePosition(new Vector3(x, 0, -z), out _, 0.05f, NavMesh.AllAreas))
-                rooms.Add(new Vector2Int(x, z));
-        }
-        if (rooms.Count == 0) return null;
-        return rooms[Random.Range(0, rooms.Count)];
-    }
-
-    bool FindRoadAdjacency(int roomX, int roomZ, out Vector3 roadPos)
-    {
-        /* 상 하 좌 우 네 칸 중 네브메시 있는 곳 반환 */
-        int[] dirs = {1, 0, -1, 0, 1};        // (dx,dz) 순회
-        for (int i = 0; i < 4; i++)
-        {
-            int x = roomX + dirs[i], z = roomZ + dirs[i+1];
-            if (x < 0 || x >= width || z < 0 || z >= height) continue;
-
-            Vector3 p = new Vector3(x, 0, -z);
-            if (NavMesh.SamplePosition(p, out NavMeshHit hit, 0.05f, NavMesh.AllAreas))
-            { roadPos = hit.position; return true; }
-        }
-        roadPos = Vector3.zero; return false;
-    }
-
-
-
 }
