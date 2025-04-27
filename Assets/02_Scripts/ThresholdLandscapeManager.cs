@@ -13,7 +13,6 @@ public class ThresholdLandscapeManager : MonoBehaviour
     /* ── 내부 상태 ─────────────────────────────────── */
     const int RESERVED       = -1;   // 새로 들어갈 때 예약
     const int RESERVED_LEAVE = -2;   // 나가는 중  잠금  ← 추가
-    
     int[,] board;                    // 0 empty / 1 main / 2 target / –1 reserved
     GameObject[,] agents;
 
@@ -21,11 +20,12 @@ public class ThresholdLandscapeManager : MonoBehaviour
     static readonly int[] idx = {1,2,4,5,7,8,11,12,14,15,17,18};
     static readonly HashSet<int> idxSet = new(idx);
 
-    Dictionary<Vector2Int, float> cooldown = new();   // 방 → 금지 해제 시각
+    /*──────── Cooldowns ─────────*/
+    readonly Dictionary<Vector2Int, float> cooldown      = new();   // 방 쿨
+    readonly Dictionary<NavMeshAgent,float> agentCooldown= new();   // 개인 쿨
+    readonly Dictionary<NavMeshAgent, int> stallCount = new();
+    const float ROOM_EXIT_DELAY = 2f;
     
-    // ★ NEW : 에이전트별 쿨다운 시각
-    Dictionary<NavMeshAgent, float> agentCooldown = new();
-    const float ROOM_EXIT_DELAY = 2f;    // 방을 나간 뒤 최소 2초는 예약 금지
     
     /* ── 초기화 ─────────────────────────────────────── */
     void Awake()
@@ -39,227 +39,265 @@ public class ThresholdLandscapeManager : MonoBehaviour
     }
     void Start() => ResetBoard();
 
-    void ResetBoard()
-    {
-        for (int x = 0; x < width; x++)
-        for (int z = 0; z < height; z++)
-        {
-            if (agents[x,z]) Destroy(agents[x,z]);
-            board[x,z] = 0;
-            agents[x,z]= null;
-        }
-
-        for (int x = 0; x < width; x++)
-        for (int z = 0; z < height; z++)
-        {
-            float r = Random.value;
-            if (r < emptyRatio) continue;
-
-            int label = (r < emptyRatio + mainRatio) ? 1 : 2;
-            SpawnAgent(x, z, label);
-        }
-    }
     /* ── 좌표 헬퍼 ─────────────────────────────────── */
+    static int CellX(Vector3 p) => Mathf.FloorToInt(p.x + 0.5f);
+    static int CellZ(Vector3 p) => Mathf.FloorToInt(-p.z + 0.5f);
     static bool IsRoom(int x,int z) => idxSet.Contains(x) && idxSet.Contains(z);
-    static Vector3 Cell(int x,int z)=> new(x, .5f, -z);
-
-
-    Vector3 RandomRoad(Vector3 from, float radius = 6f)
+    static Vector3 CellCenter(int x,int z)=> new(x, .5f, -z);
+    
+    Vector3 RandomRoad(Vector3 from,float r=6f)
     {
-        for (int i = 0; i < 10; i++)
+        for(int i=0;i<10;i++)
         {
-            var p = from + Random.insideUnitSphere * radius; p.y = 0;
-            if (NavMesh.SamplePosition(p, out var hit, .4f, NavMesh.AllAreas))
+            var p=from+Random.insideUnitSphere*r; p.y=0;
+            if(NavMesh.SamplePosition(p,out var hit,.4f,NavMesh.AllAreas))
                 return hit.position;
         }
         return from;
     }
+    
+    /*──────── Board reset & spawn ─*/
+    void ResetBoard()
+    {
+        for(int x=0;x<width;x++)
+        for(int z=0;z<height;z++){
+            if(agents[x,z]) Destroy(agents[x,z]);
+            board[x,z]=0; agents[x,z]=null;
+        }
 
-    /* ── 에이전트 스폰 ─────────────────────────────── */
+        for(int x=0;x<width;x++)
+        for(int z=0;z<height;z++){
+            float r=Random.value;
+            if(r<emptyRatio) continue;
+            int label = (r<emptyRatio+mainRatio)?1:2;
+            SpawnAgent(x,z,label);
+        }
+    }
+
     void SpawnAgent(int gx,int gz,int label)
     {
-        var prefab = label == 1 ? mainPrefab : targetPrefab;
-        var go     = Instantiate(prefab, Cell(gx,gz), Quaternion.identity, transform);
+        /* (1) prefab - 먼저 결정  */
+        var prefab = (label == 1) ? mainPrefab : targetPrefab;
 
+        /* (2) 실제 스폰 위치 = Road 또는 요청 셀 */
+        Vector3 pos = CellCenter(gx, gz);
+        if (IsRoom(gx, gz))                 // 방 좌표면 복도 쪽으로 이동
+            pos = RandomRoad(pos, 4f);
+
+        if (!NavMesh.SamplePosition(pos, out var hit, 1f, NavMesh.AllAreas))
+            return;                         // 주위에 NavMesh 없으면 스킵
+
+        /* (3) Instantiate */
+        var go  = Instantiate(prefab, hit.position, Quaternion.identity, transform);
+
+        /* (4) NavMeshAgent 세팅 */
         var nav = go.GetComponent<NavMeshAgent>();
         nav.stoppingDistance  = 0;
         nav.autoBraking       = true;
         nav.avoidancePriority = Random.Range(30, 70);
 
-        board[gx,gz]  = label;
-        agents[gx,gz] = go;
+        /* (5) micro-obstacle 추가 */
+        var block = new GameObject("Block");
+        block.transform.SetParent(go.transform, false);
+        var obs = block.AddComponent<NavMeshObstacle>();
+        obs.shape = NavMeshObstacleShape.Box;
+        obs.size  = new Vector3(.2f, 2f, .2f);
+        obs.carveOnlyStationary = true;
+        obs.enabled = false;
 
-        if (IsRoom(gx,gz)) StartCoroutine(RoomRoutine(nav, gx, gz, label));
-        else               StartCoroutine(RoadRoutine(nav, gx, gz, label));
+        /* (6) board/agents 는 ‘실제 셀’ 좌표로 기록 */
+        int cx = CellX(hit.position);
+        int cz = CellZ(hit.position);
+        board[cx, cz]  = label;
+        agents[cx, cz] = go;
+
+        /* (7) 처음 위치가 Room ? → RoomRoutine : RoadRoutine */
+        if (IsRoom(cx, cz))
+            StartCoroutine(RoomRoutine(nav, obs, cx, cz, label));
+        else
+            StartCoroutine(RoadRoutine(nav, obs, cx, cz, label));
     }
 
-    /* ── 방 예약 헬퍼 ──────────────────────────────── */
+    /*──────── TryReserve ─────────*/
     bool TryReserveRoom(out Vector2Int room, Vector2Int forbidden)
     {
         float now = Time.time;
-        
         int start = Random.Range(0, rooms.Count);
-        for (int k = 0; k < rooms.Count; k++)
+        for(int k=0;k<rooms.Count;k++)
         {
-            var c = rooms[(start + k) % rooms.Count];
-            int x = Mathf.RoundToInt(c.x);
-            int z = -Mathf.RoundToInt(c.z);
-            var v = new Vector2Int(x, z);
+            var c = rooms[(start+k)%rooms.Count];
+            int x = Mathf.RoundToInt(c.x), z=-Mathf.RoundToInt(c.z);
+            var v = new Vector2Int(x,z);
 
-            if (v == forbidden)               continue;        // 내 자리
-            if (board[x,z] != 0) continue; 
-            if (cooldown.TryGetValue(v, out float until) && now < until)
-                continue;                                     // 쿨다운 중
+            if(v==forbidden) continue;
+            if(board[x,z]!=0) continue;
+            if(cooldown.TryGetValue(v,out float until)&&now<until) continue;
 
-            board[x,z] = RESERVED;
-            room = v;
-            return true;
+            board[x,z]=RESERVED; room=v; return true;
         }
-        room = default; return false;
+        room=default; return false;
     }
-    
-    /* ── Agent·Obstacle 토글 ─────────────────────── */
+    /*──────── Freeze helpers ─────*/
     IEnumerator Freeze(NavMeshAgent ag, NavMeshObstacle ob)
     {
-        ag.ResetPath(); ag.isStopped = true;
-        yield return null;
-        ag.enabled = false;
-        if (ob) ob.enabled = true;          // carve
+        ag.ResetPath(); 
+        ag.isStopped=true; 
+        yield return null; 
+        ag.enabled=false; 
+        ob.enabled=true;
     }
-    IEnumerator UnFreeze(NavMeshAgent ag, NavMeshObstacle ob)
-    {
-        if (ob) ob.enabled = false;
-        yield return null;
-        ag.enabled = true; ag.isStopped = false;
+    IEnumerator UnFreeze(NavMeshAgent ag,NavMeshObstacle ob)
+    { 
+        ob.enabled=false; 
+        yield return null; 
+        ag.enabled=true; 
+        ag.isStopped=false; 
     }
-    
-    /* ── 이동·점유 코루틴 ─────────────────────────── */
-    IEnumerator MoveIntoRoom(NavMeshAgent nav, NavMeshObstacle ob, Vector2Int dst, int label)
+
+    /*──────── Move & Hold ────────*/
+    IEnumerator MoveIntoRoom(NavMeshAgent nav,NavMeshObstacle ob,Vector2Int dst,int label)
     {
-        Vector3 center = Cell(dst.x, dst.y);
+        Vector3 center = CellCenter(dst.x, dst.y);
+        if (!NavMesh.SamplePosition(center, out var hit, 0.3f, NavMesh.AllAreas))
+            hit.position = center;
 
-        /* 1) 이동 */
-        NavMesh.SamplePosition(center, out var hit, .3f, NavMesh.AllAreas);
-        nav.SetDestination(hit.position);
-        yield return new WaitUntil(() => !nav.pathPending && nav.remainingDistance <= arriveEps);
-
-        /* 2) 방 점유 시도 */
-        yield return Freeze(nav, ob);
-
-        // 필요하면 10 cm 이내 스냅
-        if (Vector3.Distance(nav.transform.position, center) < .1f)
-            nav.transform.position = center;
-
-        if (agents[dst.x,dst.y] == null)
+        /* SafeMove 단 한 번 */
+        if (!SafeMove(nav, hit.position))
         {
-            agents[dst.x,dst.y] = nav.gameObject;
-            board [dst.x,dst.y] = label;
-        }
-        else   // 이미 누가 차지
-        {
-            cooldown[new Vector2Int(dst.x, dst.y)] = Time.time + 10f; // 10 초 쿨
-
-            yield return UnFreeze(nav, ob);
-            nav.SetDestination(RandomRoad(nav.transform.position, 8f));
-            
-            agentCooldown[nav] = Time.time + ROOM_EXIT_DELAY; // 2 초 개인 쿨
-            StartWander(nav, label);
+            agentCooldown[nav] = Time.time + ROOM_EXIT_DELAY;
+            StartWander(nav, ob, label);
             yield break;
         }
+        
+        /* 정상 도착까지 대기 */
+        yield return new WaitUntil(() =>
+            nav.enabled && nav.isOnNavMesh &&
+            !nav.pathPending && nav.remainingDistance <= arriveEps);
+        
+        yield return Freeze(nav,ob);
 
-        // ── 방 안 5초 대기 후 ──
+        if(Vector3.Distance(nav.transform.position,center)<.1f)
+            nav.transform.position = center;
+
+        /* 최종 충돌 확인 */
+        if (agents[dst.x, dst.y] == null)
+        {
+            board[dst.x,dst.y]=label; agents[dst.x,dst.y]=nav.gameObject;
+        }
+        else 
+        {                       // 레이스 → 실패 처리
+            cooldown[new Vector2Int(dst.x,dst.y)] = Time.time + Random.Range(8f,12f);
+            yield return UnFreeze(nav,ob);
+            agentCooldown[nav] = Time.time + ROOM_EXIT_DELAY;
+            SafeMove(nav, RandomRoad(nav.transform.position,8f));
+            StartWander(nav,ob,label); yield break;
+        }
+
+        /* 5 초 대기 */
         yield return new WaitForSeconds(5f);
-        yield return UnFreeze(nav, ob);
-        agentCooldown[nav] = Time.time + ROOM_EXIT_DELAY;     // ★ 성공 경로도 설정
-        StartWander(nav, label);
+        yield return UnFreeze(nav,ob);
+
+        /* 셀 잠금 후 떠나기 */
+        int cx = CellX(nav.transform.position), cz = CellZ(nav.transform.position);
+        board[cx,cz]  = RESERVED_LEAVE; agents[cx,cz]=null;
+        agentCooldown[nav]=Time.time+ROOM_EXIT_DELAY;
+        StartWander(nav,ob,label);
     }
     
     /* ── 주요 코루틴들 ────────────────────────────── */
-    IEnumerator RoadRoutine(NavMeshAgent nav,int sx,int sz,int label)
+    IEnumerator RoadRoutine(NavMeshAgent nav,NavMeshObstacle ob,int sx,int sz,int label)
     {
-        if (agentCooldown.TryGetValue(nav, out float until) && Time.time < until)
-        {
-            yield return Wander(nav, label);      // 아직 쿨다운 → 그냥 Wander
-            yield break;
-        }
-        
-        if (!TryReserveRoom(out var dst, new Vector2Int(sx, sz)))
-        { yield return Wander(nav, label); yield break; }
+        if(agentCooldown.TryGetValue(nav,out float t)&&Time.time<t)
+        { yield return Wander(nav,ob,label); yield break; }
 
-        board[sx,sz] = RESERVED_LEAVE; 
-        agents[sx,sz] = null;
-        
-        yield return MoveIntoRoom(nav, nav.GetComponent<NavMeshObstacle>(), dst, label);
+        if(!TryReserveRoom(out var dst,new Vector2Int(sx,sz)))
+        { yield return Wander(nav,ob,label); yield break; }
+
+        yield return new WaitForSeconds(0.5f);
+        board[sx,sz]=RESERVED_LEAVE; 
+        agents[sx,sz]=null;
+        yield return MoveIntoRoom(nav,ob,dst,label);
     }
 
-    IEnumerator RoomRoutine(NavMeshAgent nav,int gx,int gz,int label)
+    IEnumerator RoomRoutine(NavMeshAgent nav,NavMeshObstacle ob,int gx,int gz,int label)
     {
-        yield return new WaitForSeconds(5f);      // 방 안 5 초
-        board[gx,gz] = RESERVED_LEAVE;
-        agents[gx,gz] = null;
+        yield return new WaitForSeconds(0.5f);
+        board[gx,gz]=RESERVED_LEAVE; 
+        agents[gx,gz]=null;
 
-        if (agentCooldown.TryGetValue(nav, out float until) && Time.time < until)
-        {
-            yield return Wander(nav, label);      // 아직 쿨다운 → 그냥 Wander
-            yield break;
-        }
-        
-        if (!TryReserveRoom(out var dst, new Vector2Int(gx, gz)))
-        { yield return Wander(nav, label); yield break; }
-        yield return MoveIntoRoom(nav, nav.GetComponent<NavMeshObstacle>(), dst, label);
+        if(agentCooldown.TryGetValue(nav,out float t)&&Time.time<t)
+        { yield return Wander(nav,ob,label); yield break; }
+
+        if(!TryReserveRoom(out var dst,new Vector2Int(gx,gz)))
+        { yield return Wander(nav,ob,label); yield break; }
+
+        yield return MoveIntoRoom(nav,ob,dst,label);
     }
 
-    IEnumerator Wander(NavMeshAgent nav,int label)
+    IEnumerator Wander(NavMeshAgent nav,NavMeshObstacle ob,int label)
     {
-        /* ── 방을 떠날 때 현재 자리 비우기 ── */
-        int ox = Mathf.RoundToInt(nav.transform.position.x);
-        int oz = -Mathf.RoundToInt(nav.transform.position.z);
-        if (IsRoom(ox,oz) && agents[ox,oz] == nav.gameObject)
+        while(nav)
         {
-            if (board[ox,oz] == RESERVED_LEAVE)
-                board[ox,oz] = 0;
-            agents[ox,oz] = null;
-        }
-        
-        /* ── wander 루프 ── */
-        while (nav)
-        {
-            int cx = Mathf.RoundToInt(nav.transform.position.x);
-            int cz = -Mathf.RoundToInt(nav.transform.position.z);
-            
-            if (board[cx,cz] == RESERVED_LEAVE)
-                board[cx,cz] = 0;                 // 이제 진짜 비로소 빈 방
-            
-            if (agentCooldown.TryGetValue(nav, out float until) && Time.time < until)
+            // ★ Stall guard
+            if (!nav.pathPending && nav.hasPath &&
+                nav.pathStatus == NavMeshPathStatus.PathComplete)
             {
-                nav.SetDestination(RandomRoad(nav.transform.position, 8f));
-                yield return new WaitForSeconds(wanderInterval);
-                continue;                       // 다음 while 회차
+                stallCount[nav] = 0;     // ← 정상 경로면 즉시 0 으로
+            }
+            
+            /* 셀 떠났다면 RESERVED_LEAVE → 0 */
+            int cx=CellX(nav.transform.position), cz=CellZ(nav.transform.position);
+            if(board[cx,cz]==RESERVED_LEAVE) board[cx,cz]=0;
+
+            if(agentCooldown.TryGetValue(nav,out float t)&&Time.time<t)
+            {
+                SafeMove(nav, RandomRoad(nav.transform.position,8f));
+                yield return new WaitForSeconds(wanderInterval); continue;
             }
 
-            if (TryReserveRoom(out var dst, new Vector2Int(cx, cz)))
-            {
-                yield return MoveIntoRoom(nav, nav.GetComponent<NavMeshObstacle>(),
-                    dst, label);
-                continue;   // 도착하면 루프 재시작
-            }
+            if(TryReserveRoom(out var dst,new Vector2Int(cx,cz)))
+            { yield return MoveIntoRoom(nav,ob,dst,label); continue; }
 
-            nav.SetDestination(RandomRoad(nav.transform.position, 8f));
+            SafeMove(nav, RandomRoad(nav.transform.position,8f));
             yield return new WaitForSeconds(wanderInterval);
         }
-
-        if (nav.TryGetComponent<AlreadyWandering>(out var aw))
-            Destroy(aw);
     }
 
     /* ── Wander 시작 헬퍼 ─────────────────────────── */
-    void StartWander(NavMeshAgent nav,int label)
+    void StartWander(NavMeshAgent nav,NavMeshObstacle ob,int label)
     {
-        if (nav.TryGetComponent<AlreadyWandering>(out _)) return;
+        if(nav.TryGetComponent<AlreadyWandering>(out _)) return;
         nav.gameObject.AddComponent<AlreadyWandering>();
-        StartCoroutine(Wander(nav,label));
+        StartCoroutine(Wander(nav,ob,label));
     }
  
-    /* ── 빈 태그 컴포넌트 ─────────────────────────── */
+    bool SafeMove(NavMeshAgent nav, Vector3 target)
+    {
+        if (!nav || !nav.enabled) return false;
+
+        /* NavMesh 위가 아니면 먼저 올려두기 */
+        if (!nav.isOnNavMesh)
+        {
+            if (!NavMesh.SamplePosition(nav.transform.position, out var hit, 2f, NavMesh.AllAreas))
+                return false;
+            nav.Warp(hit.position);
+        }
+
+        /* 이동 명령 시도 */
+        if (!nav.SetDestination(target)) return false;
+
+        /* 경로가 바로 Invalid?  → 10 cm 옆으로 워프해서 다시 시도 */
+        if (!nav.hasPath || nav.pathStatus != NavMeshPathStatus.PathComplete)
+        {
+            if (NavMesh.SamplePosition(target, out var hit2, 1.5f, NavMesh.AllAreas))
+            {
+                nav.Warp(hit2.position);              // ★ 강제 이동
+                nav.SetDestination(hit2.position);    // 자기 셀 중앙으로
+            }
+            else return false;
+        }
+        return true;
+    }
+    
     sealed class AlreadyWandering : MonoBehaviour {}
 }
