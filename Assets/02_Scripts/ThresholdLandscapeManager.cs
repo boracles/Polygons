@@ -211,10 +211,15 @@ public class ThresholdLandscapeManager : MonoBehaviour
         occupied.Remove(nav);
 
         board[dst.x, dst.y] = RESERVED_LEAVE;
+        reserved.Remove(dst);   
         StartCoroutine(ReleaseAfterExit(dst));
 
         agentCooldown[nav] = Time.time + ROOM_EXIT_DELAY;
-        SafeMove(nav, RandomRoad(nav.transform.position, 8f));
+        
+        var marker = nav.GetComponent<AlreadyWandering>();
+        if (marker) Destroy(marker);        // 마커 제거
+        StartWander(nav, ob, label);        // 새 Wander 시작
+        
         yield break;
     }
     
