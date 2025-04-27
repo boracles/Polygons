@@ -40,8 +40,8 @@ public class ThresholdLandscapeManager : MonoBehaviour
     void Start() => ResetBoard();
 
     /* ── 좌표 헬퍼 ─────────────────────────────────── */
-    static int CellX(Vector3 p) => Mathf.FloorToInt(p.x + 0.5f);
-    static int CellZ(Vector3 p) => Mathf.FloorToInt(-p.z + 0.5f);
+    static int CellX(Vector3 p) => Mathf.RoundToInt(p.x);
+    static int CellZ(Vector3 p) => Mathf.RoundToInt(-p.z);
     static bool IsRoom(int x,int z) => idxSet.Contains(x) && idxSet.Contains(z);
     static Vector3 CellCenter(int x,int z)=> new(x, .5f, -z);
     
@@ -286,9 +286,6 @@ public class ThresholdLandscapeManager : MonoBehaviour
         /* 이동 명령 시도 */
         if (!nav.SetDestination(target)) return false;
 
-        if (!nav.hasPath || nav.pathStatus != NavMeshPathStatus.PathComplete)
-            return false;
-        
         return true;
     }
     
