@@ -11,8 +11,9 @@ public class ThresholdLandscapeManager : MonoBehaviour
     [Header("Behaviour")]    [SerializeField] float wanderInterval = 2f, arriveEps=.05f;
 
     /* ── 내부 상태 ─────────────────────────────────── */
-    const int RESERVED       = -1;   // 새로 들어갈 때 예약
-    const int RESERVED_LEAVE = -2;   // 나가는 중  잠금  ← 추가
+    const int RESERVED       = -1;   // 예약 표시
+    const int RESERVED_LEAVE = -2;   // 나가는 중
+
     int[,] board;                    // 0 empty / 1 main / 2 target / –1 reserved
     GameObject[,] agents;
 
@@ -42,8 +43,8 @@ public class ThresholdLandscapeManager : MonoBehaviour
     void Start() => ResetBoard();
 
     /* ── 좌표 헬퍼 ─────────────────────────────────── */
-    static int CellX(Vector3 p) => Mathf.RoundToInt(p.x);
-    static int CellZ(Vector3 p) => Mathf.RoundToInt(-p.z);
+    static int CellX(Vector3 p) => Mathf.FloorToInt(p.x + 0.5f);
+    static int CellZ(Vector3 p) => Mathf.FloorToInt(-p.z + 0.5f);
     static bool IsRoom(int x,int z) => idxSet.Contains(x) && idxSet.Contains(z);
     static Vector3 CellCenter(int x,int z)=> new(x, .5f, -z);
     
@@ -125,21 +126,27 @@ public class ThresholdLandscapeManager : MonoBehaviour
     bool TryReserveRoom(out Vector2Int room, Vector2Int forbid)
     {
         float now = Time.time;
-        
         int start = Random.Range(0, rooms.Count);
         for (int i = 0; i < rooms.Count; ++i)
         {
-            var c  = rooms[(start+i)%rooms.Count];
-            var v  = new Vector2Int(Mathf.RoundToInt(c.x), Mathf.RoundToInt(-c.z));
+            var c = rooms[(start + i) % rooms.Count];
+            var v = new Vector2Int(Mathf.RoundToInt(c.x), Mathf.RoundToInt(-c.z));
 
-            if (v == forbid)                     continue;      // 내 자리
-            if (reserved.Contains(v))            continue;      // 이미 예약/점유
+            // (1) 자기 자리 제외
+            if (v == forbid) continue;
+            // (2) 이미 예약·점유된 방 제외
+            if (reserved.Contains(v))          continue;
+            if (board[v.x, v.y] != 0)          continue;
+            // (3) 쿨다운 검사
             if (cooldown.TryGetValue(v, out var t) && now < t) continue;
 
-            reserved.Add(v);                     // ★ 원자적 예약!
+            // (4) 예약 확정
+            reserved.Add(v);
+            board[v.x, v.y] = RESERVED;   // ← 즉시 차단!
             room = v;
             return true;
         }
+
         room = default;
         return false;
     }
@@ -162,47 +169,60 @@ public class ThresholdLandscapeManager : MonoBehaviour
     
     IEnumerator MoveIntoRoom(NavMeshAgent nav,NavMeshObstacle ob,Vector2Int dst,int label)
     {
-        // (A) 이동 명령 성공했는지 즉시 확인
         if (!SafeMove(nav, CellCenter(dst.x, dst.y)))
         {
-            reserved.Remove(dst);        // 예약 해제
+            reserved.Remove(dst);
+            board[dst.x, dst.y] = 0;
             yield break;
         }
         
-        // (B) 도착 판정 : path 가 있고, 아직 계산중이 아니며,
-//     멈출 거리(stoppingDistance)를 포함해서 거의 다 왔다
-        yield return new WaitUntil(() =>
-            nav.enabled &&
-            !nav.pathPending &&
-            nav.hasPath &&
-            nav.remainingDistance <= nav.stoppingDistance + arriveEps);
+        // ② 경로 따라 이동 (계속 계산중이면 대기)
+        yield return new WaitUntil(() => !nav.pathPending &&
+                                         nav.pathStatus == NavMeshPathStatus.PathComplete);
 
-        // 3) 도착 실패(가로막힘 등) → 예약 취소
-        if (nav.remainingDistance > arriveEps)
-        { reserved.Remove(dst); yield break; }
+        // ③ “셀 중심까지” 20 cm 이내? 아니면 실패
+        Vector3 center = CellCenter(dst.x, dst.y);
+        if (Vector3.SqrMagnitude(nav.transform.position - center) > 0.20f * 0.20f)
+        {
+            reserved.Remove(dst); 
+            board[dst.x, dst.y] = 0;
+            yield break;
+        }
 
-        // 4) 점유 확정
-        yield return Freeze(nav, ob);
+        // (c) NavMesh.SamplePosition 실패
+        if (!NavMesh.SamplePosition(center, out var snap, 0.4f, NavMesh.AllAreas))
+        {
+            reserved.Remove(dst); 
+            board[dst.x, dst.y] = 0;
+            yield break;
+        }
+        
+        // ④ 점유 확정
+        nav.Warp(snap.position);          // ★ 먼저 스냅
+        yield return Freeze(nav, ob);     // 그리고 Freeze
+
         occupied[nav] = dst;
-        board[dst.x,dst.y] = label;
+        board[dst.x, dst.y] = label;      // ← 중복 라인 삭제
 
         yield return new WaitForSeconds(5f);
 
-        // 5) 떠나기
+        // ⑤ 떠나며 정리
         yield return UnFreeze(nav, ob);
         occupied.Remove(nav);
 
-        board[dst.x,dst.y] = RESERVED_LEAVE;
-        StartCoroutine(ReleaseAfterExit(dst));     // reserved 해제는 여기서!
+        board[dst.x, dst.y] = RESERVED_LEAVE;
+        StartCoroutine(ReleaseAfterExit(dst));
+
         agentCooldown[nav] = Time.time + ROOM_EXIT_DELAY;
-        StartWander(nav, ob, label);
+        SafeMove(nav, RandomRoad(nav.transform.position, 8f));
+        yield break;
     }
     
     IEnumerator ReleaseAfterExit(Vector2Int cell)
     {
-        yield return new WaitForSeconds(0.4f);              // NavMeshObstacle carve 끝날 시간
-        board[cell.x,cell.y] = 0;
-        reserved.Remove(cell);                              // ★ 이제 진짜 빈 방
+        yield return new WaitForSeconds(0.4f);    // carving 끝날 시간
+        board[cell.x, cell.y] = 0;                // ← 빈 방으로
+        reserved.Remove(cell);
     }
     
     /* ── 주요 코루틴들 ────────────────────────────── */
@@ -239,11 +259,15 @@ public class ThresholdLandscapeManager : MonoBehaviour
     {
         while (nav)
         {
-            if (agentCooldown.TryGetValue(nav,out var t) && Time.time < t)
+            if (agentCooldown.TryGetValue(nav, out var until) && Time.time < until)
             {
-                SafeMove(nav, RandomRoad(nav.transform.position,8f));
-                yield return new WaitForSeconds(wanderInterval);
-                continue;
+                // ❶ 성공할 때까지 5회까지 재시도
+                for (int i = 0; i < 5; i++)
+                    if (SafeMove(nav, RandomRoad(nav.transform.position, 8f)))
+                        break;
+
+                yield return null;               // 다음 프레임부터 바로 이동
+                continue;                         // ← wait 없이 루프
             }
 
             /* 빈 방 찾기 시도 → 없으면 그냥 계속 돌아다님 */
@@ -263,10 +287,9 @@ public class ThresholdLandscapeManager : MonoBehaviour
         }
     }
 
-    /* ── Wander 시작 헬퍼 ─────────────────────────── */
     void StartWander(NavMeshAgent nav,NavMeshObstacle ob,int label)
     {
-        if(nav.TryGetComponent<AlreadyWandering>(out _)) return;
+        if (nav.TryGetComponent<AlreadyWandering>(out _)) return;
         nav.gameObject.AddComponent<AlreadyWandering>();
         StartCoroutine(Wander(nav,ob,label));
     }
@@ -286,7 +309,15 @@ public class ThresholdLandscapeManager : MonoBehaviour
 
         // 새 목적지 → 항상 SetDestination
         if (!nav.SetDestination(target))
+        {
+            if (NavMesh.SamplePosition(target, out var hit2, 0.3f, NavMesh.AllAreas))
+            {
+                nav.Warp(hit2.position);
+                nav.SetDestination(hit2.position);
+                return true;
+            }
             return false;
+        }
 
         // 경로가 완전히 계산될 때까지 1프레임 양보
         return true;
