@@ -25,11 +25,30 @@ public class ThresholdLandscapeManager : MonoBehaviour
     /*─────── 방 좌표 관리 ───────*/
     readonly List<Vector3> rooms = new();          // 144개 방 world 좌표
     readonly HashSet<(int,int)> roomSet = new();   // 빠른 룩업용
-    bool[] occupied;                               // 방 점유 여부
+    bool[] occupied;                   
 
     /* 싱글턴(간단 접근용) */
     public static ThresholdLandscapeManager I { get; private set; }
     void Awake() => I = this;
+
+// ─ 기존 함수 그대로 두고 ─
+public bool TryReserveFreeRoom(out int roomIndex)
+    => TryReserveFreeRoom(out roomIndex, exclude:-1);
+
+// ─ ‘이 방은 빼고 찾아 줘’ 버전 ─
+public bool TryReserveFreeRoom(out int roomIndex, int exclude)
+{
+    for (int i = 0; i < occupied.Length; ++i)
+        if (i != exclude && !occupied[i])
+        {
+            occupied[i] = true;
+            roomIndex   = i;
+            return true;
+        }
+    roomIndex = -1;
+    return false;
+}
+
 
     /*──────────── ENTRY ────────────*/
     void Start()
@@ -41,36 +60,33 @@ public class ThresholdLandscapeManager : MonoBehaviour
 
     /*──────── Room 좌표 생성 ────────*/
     static readonly int[] idx = {1,2,4,5,7,8,11,12,14,15,17,18};
-    void BuildRoomCoordinates()
-    {
-        rooms.Clear();
-        roomSet.Clear();
+    
+   void BuildRoomCoordinates()
+{
+    rooms.Clear();
+    roomSet.Clear();
 
-        foreach (int gx in idx)
-        foreach (int gz in idx)
-        {
-            rooms.Add(new Vector3(gx, 0.5f, -gz));
-            roomSet.Add((gx, gz));
-        }
-    }
-
-    /*──────── 방 점유/해제 API ────────*/
-    public bool TryReserveFreeRoom(out int roomIndex)
+    foreach (int gx in idx)
+    foreach (int gz in idx)
     {
-        for (int i = 0; i < occupied.Length; ++i)
-            if (!occupied[i])
-            {
-                occupied[i] = true;
-                roomIndex   = i;
-                return true;
-            }
-        roomIndex = -1;
-        return false;
+        Vector3 approx = new Vector3(gx, 0.5f, -gz);         // 격자 중앙
+
+        // ★ 한번만 NavMesh 위로 스냅해서 저장
+        if (NavMesh.SamplePosition(approx, out var hit, 1f, NavMesh.AllAreas))
+            approx = hit.position;                           // 스냅 성공
+
+        rooms.Add(approx);                                   // 항상 NavMesh 위!
+        roomSet.Add((gx, gz));                               // 룩업용 해시
     }
-    public void VacateRoom(int roomIndex) { if (roomIndex>=0 && roomIndex<occupied.Length) occupied[roomIndex]=false; }
+}
+    
+   public void VacateRoom(int roomIndex)
+   {
+       if (roomIndex < 0 || roomIndex >= occupied.Length) return;
+       occupied[roomIndex] = false;
+   }
     public Vector3 GetRoomPosition(int roomIndex) => rooms[roomIndex];
 
-    /*──────────── 최초 스폰 ───────────*/
     void SpawnAgentsOnce()
 {
     int needMain   = Mathf.RoundToInt(TOTAL_AGENTS * mainRatio / (mainRatio + targetRatio));
@@ -142,4 +158,5 @@ public class ThresholdLandscapeManager : MonoBehaviour
         ++spawned;
     }
 }
+
 }
