@@ -23,10 +23,6 @@ public class ThresholdLandscapeManager : MonoBehaviour
     /*──────── Cooldowns ─────────*/
     readonly Dictionary<Vector2Int, float> cooldown      = new();   // 방 쿨
     readonly Dictionary<NavMeshAgent,float> agentCooldown= new();   // 개인 쿨
-    readonly Dictionary<NavMeshAgent, int> stallCount = new();
-    readonly Dictionary<NavMeshAgent,Vector2Int> claim = new();   // agent → 점유 셀
-    
-    // 전역
     readonly HashSet<Vector2Int> reserved = new();  // 예약 중 + 점유 중 모두 포함
     readonly Dictionary<NavMeshAgent, Vector2Int> occupied = new();    // 실제 점유
 
@@ -102,14 +98,16 @@ public class ThresholdLandscapeManager : MonoBehaviour
         nav.autoBraking       = true;
         nav.avoidancePriority = Random.Range(30, 70);
 
-        /* (5) micro-obstacle 추가 */
+        // (5) micro-obstacle 추가 --------------- 
         var block = new GameObject("Block");
         block.transform.SetParent(go.transform, false);
+
         var obs = block.AddComponent<NavMeshObstacle>();
-        obs.shape = NavMeshObstacleShape.Box;
-        obs.size  = new Vector3(.2f, 2f, .2f);
-        obs.carveOnlyStationary = true;
-        obs.enabled = false;
+        obs.shape               = NavMeshObstacleShape.Box;
+        obs.size                = new Vector3(0.2f, 2f, 0.2f);
+        obs.carving             = true;   // ← 반드시 켜 주세요!
+        obs.carveOnlyStationary = true;   // 이미 체크해 둔 옵션
+        obs.enabled             = false;  // Freeze() 때 true 로 바뀜
 
         /* (6) board/agents 는 ‘실제 셀’ 좌표로 기록 */
         int cx = CellX(hit.position);
@@ -164,25 +162,47 @@ public class ThresholdLandscapeManager : MonoBehaviour
     
     IEnumerator MoveIntoRoom(NavMeshAgent nav,NavMeshObstacle ob,Vector2Int dst,int label)
     {
-        Vector3 center = CellCenter(dst.x, dst.y);
+        // (A) 이동 명령 성공했는지 즉시 확인
+        if (!SafeMove(nav, CellCenter(dst.x, dst.y)))
+        {
+            reserved.Remove(dst);        // 예약 해제
+            yield break;
+        }
         
-        if(!SafeMove(nav, center)) yield break;          // 이동 지시 실패
+        // (B) 도착 판정 : path 가 있고, 아직 계산중이 아니며,
+//     멈출 거리(stoppingDistance)를 포함해서 거의 다 왔다
+        yield return new WaitUntil(() =>
+            nav.enabled &&
+            !nav.pathPending &&
+            nav.hasPath &&
+            nav.remainingDistance <= nav.stoppingDistance + arriveEps);
 
-        yield return new WaitUntil( ()=>!nav.pathPending &&
-                                        nav.remainingDistance<=arriveEps );
-        
-        yield return Freeze(nav,ob);                     // ★ 여기서 실제 점유 확정
-        occupied[nav]       = dst;      // 점유 표시 (reserved 이미 포함)
+        // 3) 도착 실패(가로막힘 등) → 예약 취소
+        if (nav.remainingDistance > arriveEps)
+        { reserved.Remove(dst); yield break; }
 
-        yield return new WaitForSeconds(5f);             // ★ 방 안 5초
+        // 4) 점유 확정
+        yield return Freeze(nav, ob);
+        occupied[nav] = dst;
+        board[dst.x,dst.y] = label;
 
-        yield return UnFreeze(nav,ob);
+        yield return new WaitForSeconds(5f);
 
-        reserved.Remove(dst);           // 완전 해제
+        // 5) 떠나기
+        yield return UnFreeze(nav, ob);
         occupied.Remove(nav);
-        
-        agentCooldown[nav]  = Time.time + ROOM_EXIT_DELAY;
-        StartWander(nav,ob,label);
+
+        board[dst.x,dst.y] = RESERVED_LEAVE;
+        StartCoroutine(ReleaseAfterExit(dst));     // reserved 해제는 여기서!
+        agentCooldown[nav] = Time.time + ROOM_EXIT_DELAY;
+        StartWander(nav, ob, label);
+    }
+    
+    IEnumerator ReleaseAfterExit(Vector2Int cell)
+    {
+        yield return new WaitForSeconds(0.4f);              // NavMeshObstacle carve 끝날 시간
+        board[cell.x,cell.y] = 0;
+        reserved.Remove(cell);                              // ★ 이제 진짜 빈 방
     }
     
     /* ── 주요 코루틴들 ────────────────────────────── */
@@ -217,37 +237,28 @@ public class ThresholdLandscapeManager : MonoBehaviour
 
     IEnumerator Wander(NavMeshAgent nav,NavMeshObstacle ob,int label)
     {
-        while(nav)
+        while (nav)
         {
-            Vector2Int cell;
-            if (claim.TryGetValue(nav, out cell))                 // 아직 자신의 셀 안?
-            {
-                Vector3 p = nav.transform.position;
-                if (Mathf.Abs(p.x - cell.x) > .49f ||
-                    Mathf.Abs(-p.z - cell.y) > .49f)
-                {                                                 // 반(½) 셀 이상 벗어남
-                    if (board[cell.x,cell.y]==RESERVED_LEAVE)
-                        board[cell.x,cell.y] = 0;                 // ③ 완전히 비움
-                    claim.Remove(nav);
-                }
-            }
-
-            if (agentCooldown.TryGetValue(nav,out float until) && Time.time<until)
+            if (agentCooldown.TryGetValue(nav,out var t) && Time.time < t)
             {
                 SafeMove(nav, RandomRoad(nav.transform.position,8f));
                 yield return new WaitForSeconds(wanderInterval);
                 continue;
             }
 
-            if (TryReserveRoom(out var dst, new Vector2Int(
-                    CellX(nav.transform.position),
-                    CellZ(nav.transform.position))))
+            /* 빈 방 찾기 시도 → 없으면 그냥 계속 돌아다님 */
+            if (TryReserveRoom(out var dst,
+                    new Vector2Int(CellX(nav.transform.position),
+                        CellZ(nav.transform.position))))
             {
                 yield return MoveIntoRoom(nav,ob,dst,label);
                 continue;
             }
 
-            SafeMove(nav, RandomRoad(nav.transform.position,8f));
+            // ★ 반드시 유효한 경로를 유지하게 함
+            if (!nav.hasPath || nav.pathStatus != NavMeshPathStatus.PathComplete)
+                SafeMove(nav, RandomRoad(nav.transform.position,8f));
+
             yield return new WaitForSeconds(wanderInterval);
         }
     }
@@ -264,17 +275,20 @@ public class ThresholdLandscapeManager : MonoBehaviour
     {
         if (!nav || !nav.enabled) return false;
 
-        /* NavMesh 위가 아니면 먼저 올려두기 */
+        // NavMesh 위로 올리기
         if (!nav.isOnNavMesh)
         {
-            if (!NavMesh.SamplePosition(nav.transform.position, out var hit, 2f, NavMesh.AllAreas))
+            if (!NavMesh.SamplePosition(nav.transform.position,
+                    out var hit, 2f, NavMesh.AllAreas))
                 return false;
             nav.Warp(hit.position);
         }
 
-        /* 이동 명령 시도 */
-        if (!nav.SetDestination(target)) return false;
+        // 새 목적지 → 항상 SetDestination
+        if (!nav.SetDestination(target))
+            return false;
 
+        // 경로가 완전히 계산될 때까지 1프레임 양보
         return true;
     }
     
