@@ -11,7 +11,9 @@ public class ThresholdLandscapeManager : MonoBehaviour
     [Header("Behaviour")]    [SerializeField] float wanderInterval = 2f, arriveEps=.05f;
 
     /* ── 내부 상태 ─────────────────────────────────── */
-    const int RESERVED = -1;
+    const int RESERVED       = -1;   // 새로 들어갈 때 예약
+    const int RESERVED_LEAVE = -2;   // 나가는 중  잠금  ← 추가
+    
     int[,] board;                    // 0 empty / 1 main / 2 target / –1 reserved
     GameObject[,] agents;
 
@@ -19,6 +21,12 @@ public class ThresholdLandscapeManager : MonoBehaviour
     static readonly int[] idx = {1,2,4,5,7,8,11,12,14,15,17,18};
     static readonly HashSet<int> idxSet = new(idx);
 
+    Dictionary<Vector2Int, float> cooldown = new();   // 방 → 금지 해제 시각
+    
+    // ★ NEW : 에이전트별 쿨다운 시각
+    Dictionary<NavMeshAgent, float> agentCooldown = new();
+    const float ROOM_EXIT_DELAY = 2f;    // 방을 나간 뒤 최소 2초는 예약 금지
+    
     /* ── 초기화 ─────────────────────────────────────── */
     void Awake()
     {
@@ -86,21 +94,26 @@ public class ThresholdLandscapeManager : MonoBehaviour
     }
 
     /* ── 방 예약 헬퍼 ──────────────────────────────── */
-    bool TryReserveRoom(out Vector2Int room)
+    bool TryReserveRoom(out Vector2Int room, Vector2Int forbidden)
     {
+        float now = Time.time;
+        
         int start = Random.Range(0, rooms.Count);
         for (int k = 0; k < rooms.Count; k++)
         {
-            var c  = rooms[(start + k) % rooms.Count];
-            int x  = Mathf.RoundToInt(c.x);
-            int z  = -Mathf.RoundToInt(c.z);
+            var c = rooms[(start + k) % rooms.Count];
+            int x = Mathf.RoundToInt(c.x);
+            int z = -Mathf.RoundToInt(c.z);
+            var v = new Vector2Int(x, z);
 
-            if (board[x,z] == 0)
-            {
-                board[x,z] = RESERVED;
-                room = new(x,z);
-                return true;
-            }
+            if (v == forbidden)               continue;        // 내 자리
+            if (board[x,z] != 0) continue; 
+            if (cooldown.TryGetValue(v, out float until) && now < until)
+                continue;                                     // 쿨다운 중
+
+            board[x,z] = RESERVED;
+            room = v;
+            return true;
         }
         room = default; return false;
     }
@@ -121,16 +134,14 @@ public class ThresholdLandscapeManager : MonoBehaviour
     }
     
     /* ── 이동·점유 코루틴 ─────────────────────────── */
-    IEnumerator MoveIntoRoom(NavMeshAgent nav, NavMeshObstacle ob,
-        Vector2Int dst, int label)
+    IEnumerator MoveIntoRoom(NavMeshAgent nav, NavMeshObstacle ob, Vector2Int dst, int label)
     {
         Vector3 center = Cell(dst.x, dst.y);
 
         /* 1) 이동 */
         NavMesh.SamplePosition(center, out var hit, .3f, NavMesh.AllAreas);
         nav.SetDestination(hit.position);
-        yield return new WaitUntil(() => !nav.pathPending &&
-                                         nav.remainingDistance <= arriveEps);
+        yield return new WaitUntil(() => !nav.pathPending && nav.remainingDistance <= arriveEps);
 
         /* 2) 방 점유 시도 */
         yield return Freeze(nav, ob);
@@ -144,55 +155,93 @@ public class ThresholdLandscapeManager : MonoBehaviour
             agents[dst.x,dst.y] = nav.gameObject;
             board [dst.x,dst.y] = label;
         }
-        else
+        else   // 이미 누가 차지
         {
+            cooldown[new Vector2Int(dst.x, dst.y)] = Time.time + 10f; // 10 초 쿨
+
             yield return UnFreeze(nav, ob);
             nav.SetDestination(RandomRoad(nav.transform.position, 8f));
+            
+            agentCooldown[nav] = Time.time + ROOM_EXIT_DELAY; // 2 초 개인 쿨
             StartWander(nav, label);
             yield break;
         }
 
-        /* 3) 방 안 대기 */
+        // ── 방 안 5초 대기 후 ──
         yield return new WaitForSeconds(5f);
-
-        /* 4) 다시 Wander */
         yield return UnFreeze(nav, ob);
+        agentCooldown[nav] = Time.time + ROOM_EXIT_DELAY;     // ★ 성공 경로도 설정
         StartWander(nav, label);
     }
     
     /* ── 주요 코루틴들 ────────────────────────────── */
     IEnumerator RoadRoutine(NavMeshAgent nav,int sx,int sz,int label)
     {
-        if (!TryReserveRoom(out var dst)) { yield return Wander(nav,label); yield break; }
+        if (agentCooldown.TryGetValue(nav, out float until) && Time.time < until)
+        {
+            yield return Wander(nav, label);      // 아직 쿨다운 → 그냥 Wander
+            yield break;
+        }
+        
+        if (!TryReserveRoom(out var dst, new Vector2Int(sx, sz)))
+        { yield return Wander(nav, label); yield break; }
 
-        board[sx,sz] = 0; agents[sx,sz] = null;
+        board[sx,sz] = RESERVED_LEAVE; 
+        agents[sx,sz] = null;
+        
         yield return MoveIntoRoom(nav, nav.GetComponent<NavMeshObstacle>(), dst, label);
     }
 
     IEnumerator RoomRoutine(NavMeshAgent nav,int gx,int gz,int label)
     {
         yield return new WaitForSeconds(5f);      // 방 안 5 초
-        board[gx,gz] = 0; agents[gx,gz] = null;
+        board[gx,gz] = RESERVED_LEAVE;
+        agents[gx,gz] = null;
 
-        if (!TryReserveRoom(out var dst)) { StartWander(nav,label); yield break; }
+        if (agentCooldown.TryGetValue(nav, out float until) && Time.time < until)
+        {
+            yield return Wander(nav, label);      // 아직 쿨다운 → 그냥 Wander
+            yield break;
+        }
+        
+        if (!TryReserveRoom(out var dst, new Vector2Int(gx, gz)))
+        { yield return Wander(nav, label); yield break; }
         yield return MoveIntoRoom(nav, nav.GetComponent<NavMeshObstacle>(), dst, label);
     }
 
     IEnumerator Wander(NavMeshAgent nav,int label)
     {
-        /* 현재 방 비우기 */
-        int cx = Mathf.RoundToInt(nav.transform.position.x);
-        int cz = -Mathf.RoundToInt(nav.transform.position.z);
-        if (IsRoom(cx,cz) && agents[cx,cz] == nav.gameObject)
-        { board[cx,cz] = 0; agents[cx,cz] = null; }
-
+        /* ── 방을 떠날 때 현재 자리 비우기 ── */
+        int ox = Mathf.RoundToInt(nav.transform.position.x);
+        int oz = -Mathf.RoundToInt(nav.transform.position.z);
+        if (IsRoom(ox,oz) && agents[ox,oz] == nav.gameObject)
+        {
+            if (board[ox,oz] == RESERVED_LEAVE)
+                board[ox,oz] = 0;
+            agents[ox,oz] = null;
+        }
+        
+        /* ── wander 루프 ── */
         while (nav)
         {
-            if (TryReserveRoom(out var dst))
+            int cx = Mathf.RoundToInt(nav.transform.position.x);
+            int cz = -Mathf.RoundToInt(nav.transform.position.z);
+            
+            if (board[cx,cz] == RESERVED_LEAVE)
+                board[cx,cz] = 0;                 // 이제 진짜 비로소 빈 방
+            
+            if (agentCooldown.TryGetValue(nav, out float until) && Time.time < until)
+            {
+                nav.SetDestination(RandomRoad(nav.transform.position, 8f));
+                yield return new WaitForSeconds(wanderInterval);
+                continue;                       // 다음 while 회차
+            }
+
+            if (TryReserveRoom(out var dst, new Vector2Int(cx, cz)))
             {
                 yield return MoveIntoRoom(nav, nav.GetComponent<NavMeshObstacle>(),
                     dst, label);
-                continue;
+                continue;   // 도착하면 루프 재시작
             }
 
             nav.SetDestination(RandomRoad(nav.transform.position, 8f));
