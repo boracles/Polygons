@@ -286,16 +286,9 @@ public class ThresholdLandscapeManager : MonoBehaviour
         /* 이동 명령 시도 */
         if (!nav.SetDestination(target)) return false;
 
-        /* 경로가 바로 Invalid?  → 10 cm 옆으로 워프해서 다시 시도 */
         if (!nav.hasPath || nav.pathStatus != NavMeshPathStatus.PathComplete)
-        {
-            if (NavMesh.SamplePosition(target, out var hit2, 1.5f, NavMesh.AllAreas))
-            {
-                nav.Warp(hit2.position);              // ★ 강제 이동
-                nav.SetDestination(hit2.position);    // 자기 셀 중앙으로
-            }
-            else return false;
-        }
+            return false;
+        
         return true;
     }
     
