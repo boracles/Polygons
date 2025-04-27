@@ -24,6 +24,12 @@ public class ThresholdLandscapeManager : MonoBehaviour
     readonly Dictionary<Vector2Int, float> cooldown      = new();   // 방 쿨
     readonly Dictionary<NavMeshAgent,float> agentCooldown= new();   // 개인 쿨
     readonly Dictionary<NavMeshAgent, int> stallCount = new();
+    readonly Dictionary<NavMeshAgent,Vector2Int> claim = new();   // agent → 점유 셀
+    
+    // 전역
+    readonly HashSet<Vector2Int> reserved = new();  // 예약 중 + 점유 중 모두 포함
+    readonly Dictionary<NavMeshAgent, Vector2Int> occupied = new();    // 실제 점유
+
     const float ROOM_EXIT_DELAY = 2f;
     
     
@@ -117,27 +123,29 @@ public class ThresholdLandscapeManager : MonoBehaviour
         else
             StartCoroutine(RoadRoutine(nav, obs, cx, cz, label));
     }
-
-    /*──────── TryReserve ─────────*/
-    bool TryReserveRoom(out Vector2Int room, Vector2Int forbidden)
+    
+    bool TryReserveRoom(out Vector2Int room, Vector2Int forbid)
     {
         float now = Time.time;
+        
         int start = Random.Range(0, rooms.Count);
-        for(int k=0;k<rooms.Count;k++)
+        for (int i = 0; i < rooms.Count; ++i)
         {
-            var c = rooms[(start+k)%rooms.Count];
-            int x = Mathf.RoundToInt(c.x), z=-Mathf.RoundToInt(c.z);
-            var v = new Vector2Int(x,z);
+            var c  = rooms[(start+i)%rooms.Count];
+            var v  = new Vector2Int(Mathf.RoundToInt(c.x), Mathf.RoundToInt(-c.z));
 
-            if(v==forbidden) continue;
-            if(board[x,z]!=0) continue;
-            if(cooldown.TryGetValue(v,out float until)&&now<until) continue;
+            if (v == forbid)                     continue;      // 내 자리
+            if (reserved.Contains(v))            continue;      // 이미 예약/점유
+            if (cooldown.TryGetValue(v, out var t) && now < t) continue;
 
-            board[x,z]=RESERVED; room=v; return true;
+            reserved.Add(v);                     // ★ 원자적 예약!
+            room = v;
+            return true;
         }
-        room=default; return false;
+        room = default;
+        return false;
     }
-    /*──────── Freeze helpers ─────*/
+
     IEnumerator Freeze(NavMeshAgent ag, NavMeshObstacle ob)
     {
         ag.ResetPath(); 
@@ -153,54 +161,27 @@ public class ThresholdLandscapeManager : MonoBehaviour
         ag.enabled=true; 
         ag.isStopped=false; 
     }
-
-    /*──────── Move & Hold ────────*/
+    
     IEnumerator MoveIntoRoom(NavMeshAgent nav,NavMeshObstacle ob,Vector2Int dst,int label)
     {
         Vector3 center = CellCenter(dst.x, dst.y);
-        if (!NavMesh.SamplePosition(center, out var hit, 0.3f, NavMesh.AllAreas))
-            hit.position = center;
-
-        /* SafeMove 단 한 번 */
-        if (!SafeMove(nav, hit.position))
-        {
-            agentCooldown[nav] = Time.time + ROOM_EXIT_DELAY;
-            StartWander(nav, ob, label);
-            yield break;
-        }
         
-        /* 정상 도착까지 대기 */
-        yield return new WaitUntil(() =>
-            nav.enabled && nav.isOnNavMesh &&
-            !nav.pathPending && nav.remainingDistance <= arriveEps);
+        if(!SafeMove(nav, center)) yield break;          // 이동 지시 실패
+
+        yield return new WaitUntil( ()=>!nav.pathPending &&
+                                        nav.remainingDistance<=arriveEps );
         
-        yield return Freeze(nav,ob);
+        yield return Freeze(nav,ob);                     // ★ 여기서 실제 점유 확정
+        occupied[nav]       = dst;      // 점유 표시 (reserved 이미 포함)
 
-        if(Vector3.Distance(nav.transform.position,center)<.1f)
-            nav.transform.position = center;
+        yield return new WaitForSeconds(5f);             // ★ 방 안 5초
 
-        /* 최종 충돌 확인 */
-        if (agents[dst.x, dst.y] == null)
-        {
-            board[dst.x,dst.y]=label; agents[dst.x,dst.y]=nav.gameObject;
-        }
-        else 
-        {                       // 레이스 → 실패 처리
-            cooldown[new Vector2Int(dst.x,dst.y)] = Time.time + Random.Range(8f,12f);
-            yield return UnFreeze(nav,ob);
-            agentCooldown[nav] = Time.time + ROOM_EXIT_DELAY;
-            SafeMove(nav, RandomRoad(nav.transform.position,8f));
-            StartWander(nav,ob,label); yield break;
-        }
-
-        /* 5 초 대기 */
-        yield return new WaitForSeconds(5f);
         yield return UnFreeze(nav,ob);
 
-        /* 셀 잠금 후 떠나기 */
-        int cx = CellX(nav.transform.position), cz = CellZ(nav.transform.position);
-        board[cx,cz]  = RESERVED_LEAVE; agents[cx,cz]=null;
-        agentCooldown[nav]=Time.time+ROOM_EXIT_DELAY;
+        reserved.Remove(dst);           // 완전 해제
+        occupied.Remove(nav);
+        
+        agentCooldown[nav]  = Time.time + ROOM_EXIT_DELAY;
         StartWander(nav,ob,label);
     }
     
@@ -238,25 +219,33 @@ public class ThresholdLandscapeManager : MonoBehaviour
     {
         while(nav)
         {
-            // ★ Stall guard
-            if (!nav.pathPending && nav.hasPath &&
-                nav.pathStatus == NavMeshPathStatus.PathComplete)
+            Vector2Int cell;
+            if (claim.TryGetValue(nav, out cell))                 // 아직 자신의 셀 안?
             {
-                stallCount[nav] = 0;     // ← 정상 경로면 즉시 0 으로
+                Vector3 p = nav.transform.position;
+                if (Mathf.Abs(p.x - cell.x) > .49f ||
+                    Mathf.Abs(-p.z - cell.y) > .49f)
+                {                                                 // 반(½) 셀 이상 벗어남
+                    if (board[cell.x,cell.y]==RESERVED_LEAVE)
+                        board[cell.x,cell.y] = 0;                 // ③ 완전히 비움
+                    claim.Remove(nav);
+                }
             }
-            
-            /* 셀 떠났다면 RESERVED_LEAVE → 0 */
-            int cx=CellX(nav.transform.position), cz=CellZ(nav.transform.position);
-            if(board[cx,cz]==RESERVED_LEAVE) board[cx,cz]=0;
 
-            if(agentCooldown.TryGetValue(nav,out float t)&&Time.time<t)
+            if (agentCooldown.TryGetValue(nav,out float until) && Time.time<until)
             {
                 SafeMove(nav, RandomRoad(nav.transform.position,8f));
-                yield return new WaitForSeconds(wanderInterval); continue;
+                yield return new WaitForSeconds(wanderInterval);
+                continue;
             }
 
-            if(TryReserveRoom(out var dst,new Vector2Int(cx,cz)))
-            { yield return MoveIntoRoom(nav,ob,dst,label); continue; }
+            if (TryReserveRoom(out var dst, new Vector2Int(
+                    CellX(nav.transform.position),
+                    CellZ(nav.transform.position))))
+            {
+                yield return MoveIntoRoom(nav,ob,dst,label);
+                continue;
+            }
 
             SafeMove(nav, RandomRoad(nav.transform.position,8f));
             yield return new WaitForSeconds(wanderInterval);
