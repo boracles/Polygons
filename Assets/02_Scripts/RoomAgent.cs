@@ -6,8 +6,11 @@ using System.Collections;
 public class RoomAgent : MonoBehaviour
 {
     enum Phase { Resting, Moving }
-
-    [SerializeField] float restDuration = 5f;
+    
+    [Header("휴식 시간(초) 랜덤 범위")] 
+    [SerializeField] float restMin = 3f; 
+    [SerializeField] float restMax = 10f;
+    
     [SerializeField] float minMoveDistance = .5f;     // 방·현재 위치 최소 간격
     [SerializeField] float stuckThreshold  = 1f;      // ★ 1초 이상 제자리면 재시도
 
@@ -36,11 +39,13 @@ public class RoomAgent : MonoBehaviour
         nav.isStopped = true;
 
         if (restCR != null) StopCoroutine(restCR);
-        restCR = StartCoroutine(RestTimer());
+        
+        float wait = Random.Range(restMin, restMax);    
+        restCR = StartCoroutine(RestTimer(wait));
     }
-    IEnumerator RestTimer()
+    IEnumerator RestTimer(float wait)
     {
-        yield return new WaitForSeconds(restDuration);
+        yield return new WaitForSeconds(wait);
         LeaveRoomAndMove();
     }
 
