@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.AI; 
 
 public class Agent : MonoBehaviour
 {
@@ -29,6 +30,8 @@ public class Agent : MonoBehaviour
     // 1=검정, 2=흰색
     public int color;
 
+    NavMeshAgent nav; 
+    
     // 이웃 ratio에 따라 본인의 state를 결정
     public void SetStateByRatio(float ratio)
     {
@@ -55,6 +58,11 @@ public class Agent : MonoBehaviour
         UpdateAnimator();
     }
 
+    void Awake()
+    {
+        nav = GetComponent<NavMeshAgent>(); // NavMeshAgent가 없다면 null
+    }
+    
     void Update()
     {
         // ThresholdLandscape 씬이 아니면 매니저가 없으므로 즉시 리턴
@@ -63,13 +71,36 @@ public class Agent : MonoBehaviour
         // 매 프레임 위치 판정 및 Occupy/ Vacate 처리
         ThresholdLandscapeManager.I.UpdateOccupancy(gameObject, currentRoom, out currentRoom);
 
-        // place 값 갱신
+        /* ② 길(Road)이라면 빈 방을 예약해 즉시 점유 */
+        if (currentRoom < 0)
+            TryClaimEmptyRoom();
+        
+        /* ③ 애니메이터 & 상태 갱신 */
         PlaceState newPlace = currentRoom >= 0 ? PlaceState.Room : PlaceState.Road;
         if (newPlace != place)
         {
             place = newPlace;
             UpdateAnimator();   // 필요시 애니·색상·UI 등 갱신
         }
+    }
+    
+    /* ───── 빈 방 찾고 점유 등록 ───── */
+    void TryClaimEmptyRoom()
+    {
+        // 이미 이동 중이면 스킵하거나, nav.remainingDistance 체크할 수도 있음
+        if (!ThresholdLandscapeManager.I.TryReserveFreeRoom(out int rid)) return;
+
+        // 점유 등록
+        ThresholdLandscapeManager.I.OccupyRoom(rid, gameObject);
+        currentRoom = rid;
+
+        /* 이동 방식 선택 */
+        Vector3 target = ThresholdLandscapeManager.I.GetRoomPosition(rid);
+
+        if (nav)                       // NavMeshAgent 가 붙어 있으면
+            nav.SetDestination(target);
+        else                           // 없으면 순간이동
+            transform.position = target;
     }
     
     void UpdateAnimator()
