@@ -152,20 +152,7 @@ public class Agent : MonoBehaviour
         anim.SetBool("IsInRoom", place == PlaceState.Room);
         anim.SetInteger("SatisfactionState", (int)currentState);
     }
-    
-    /* 방 점유 직후 호출 */
-    void StartResting()
-    {
-        phase = Phase.Resting;
-        
-        nav.isStopped = true;      // 경로 유지 O, 이동 정지
-        nav.ResetPath();           // 경로 제거 (필요하면 주석)
-        
-        float t = Random.Range(3f, 7f);      // 3-7초
-        if (restCR != null) StopCoroutine(restCR);
-        restCR = StartCoroutine(RestTimer(t));
-    }
-    
+
     /* ───── 휴식 종료 ───── */
     IEnumerator RestTimer(float wait)
     {
