@@ -55488,13 +55488,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 053da93f1c3dc44baab8a2dcd39e9b11, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  cellGap: 1
   mainPrefab: {fileID: 3351737530330129455, guid: d9b7a75dd0c7c4416b114cd0691711f3, type: 3}
   targetPrefab: {fileID: 3351737530330129455, guid: e6ac0fa859bb440ea9736cc6f9b9141f, type: 3}
   mainRatio: 0.7
   targetRatio: 0.3
-  gridSize: 20
-  cellSpacing: 1.5
-  agentsToSpawn: 144
+  spawn: 144
 --- !u!1 &1614781815
 GameObject:
   m_ObjectHideFlags: 0

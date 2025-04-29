@@ -9,6 +9,12 @@ public class Agent : MonoBehaviour
         Satisfied = 2
     }
     
+    /* 위치 상태 */
+    public enum PlaceState { Road, Room }
+    public PlaceState place = PlaceState.Road;
+    
+    int currentRoom = -1;   // 지금 점유한 방ID (-1 = 없음)
+    
     public enum Label 
     {
         Main,   // Adult-only
@@ -22,7 +28,7 @@ public class Agent : MonoBehaviour
 
     // 1=검정, 2=흰색
     public int color;
-    
+
     // 이웃 ratio에 따라 본인의 state를 결정
     public void SetStateByRatio(float ratio)
     {
@@ -49,11 +55,28 @@ public class Agent : MonoBehaviour
         UpdateAnimator();
     }
 
-    private void UpdateAnimator()
+    void Update()
+    {
+        // ThresholdLandscape 씬이 아니면 매니저가 없으므로 즉시 리턴
+        if (ThresholdLandscapeManager.I == null) return;
+        
+        // 매 프레임 위치 판정 및 Occupy/ Vacate 처리
+        ThresholdLandscapeManager.I.UpdateOccupancy(gameObject, currentRoom, out currentRoom);
+
+        // place 값 갱신
+        PlaceState newPlace = currentRoom >= 0 ? PlaceState.Room : PlaceState.Road;
+        if (newPlace != place)
+        {
+            place = newPlace;
+            UpdateAnimator();   // 필요시 애니·색상·UI 등 갱신
+        }
+    }
+    
+    void UpdateAnimator()
     {
         Animator anim = GetComponent<Animator>();
-        if(anim == null) return;
-        
+        if (!anim) return;
+        anim.SetBool("IsInRoom", place == PlaceState.Room);
         anim.SetInteger("SatisfactionState", (int)currentState);
     }
 }
