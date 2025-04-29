@@ -6,7 +6,7 @@ public class ThresholdLandscapeManager : MonoBehaviour
 {
     public static ThresholdLandscapeManager I { get; private set; }
     void Awake() => I = this;
-    
+
     /* ───── 방 인덱스(12칸) ───── */
     static readonly int[] idx = { 1,2, 4,5, 7,8, 11,12, 14,15, 17,18 };
     
@@ -38,7 +38,7 @@ public class ThresholdLandscapeManager : MonoBehaviour
     [Header("비율")]
     [Range(0,1)] public float mainRatio = .7f;
     [Range(0,1)] public float targetRatio = .3f;
-    [SerializeField] int spawn = 144;           // 생성 수
+    [SerializeField] int spawn = 140;           // 생성 수
     
     void Start()
     {
@@ -184,4 +184,40 @@ public class ThresholdLandscapeManager : MonoBehaviour
 
         return cnt;
     }
+    
+    /* 방 중심에서 가장 가까운 Road 좌표 반환 */
+    public Vector3 GetNearestRoadPos(int roomId)
+    {
+        Vector3 p = rooms[roomId].pos;
+        // 네 방향 중 ‘길’(idx 배열에 없는 칸)만 후보
+        Vector3[] dir = { Vector3.right, Vector3.left, Vector3.forward, Vector3.back };
+        
+        foreach (var d in dir)
+        {
+            Vector3 q = p + d * cellGap;
+            if (!TryGetRoomIdByPosition(q, out _))      // 방이 아니면 길
+                return q;
+        }
+        return p;   // 안전: 못 찾으면 제자리
+    }
+    
+    /* 사용 가능 빈방을 “선점”해서 반환
+   성공하면 true, 실패면 false  */
+    public bool TryTakeFreeRoom(out int id, int exclude = -1, GameObject agent = null)
+    {
+        id = -1;
+
+        List<int> free = new();
+        foreach (var kv in rooms)
+            if (kv.Key != exclude && kv.Value.occupant == null)
+                free.Add(kv.Key);
+
+        if (free.Count == 0) return false;
+
+        id = free[Random.Range(0, free.Count)];
+        rooms[id].occupant = agent;           // ★ 여기서 즉시 점유
+        return true;
+    }
+
+
 }
