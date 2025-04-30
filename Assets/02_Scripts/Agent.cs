@@ -51,16 +51,15 @@ public class Agent : MonoBehaviour
     [SerializeField] float restMax = 10.0f;
     [SerializeField] float roadWanderRadius = 2f;
     
-    [SerializeField] float stressDecayRate = 0.3f;   // 울음이 없을 때 감쇠 속도
+    [SerializeField] float stressDecayRate = 0.2f;   // 울음이 없을 때 감쇠 속도
 
     [SerializeField] [Range(0f, 1f)]
     float inclusiveness = 0.5f; //(0: 배제적 - 1: 포용적)
-    float BaseThreshold => 3f;
-    float stressThreshold => Mathf.Lerp(0.2f, 1.0f, inclusiveness);
-    
+    float stressThreshold => Mathf.Lerp(0.1f, 0.6f, inclusiveness);
     float cryAccum = 0f;       // 누적 스트레스
-    
     float stillTimer = 0f;
+    
+    Material cachedMaterial;
     
     PlaceState prevPlace = PlaceState.Road;   // 직전 장소 저장
 
@@ -118,7 +117,9 @@ public class Agent : MonoBehaviour
             default: inclusiveness = 0.5f; break;
         }
 
-        Debug.Log($"{name} 초기 포용성: {inclusiveness}");
+        var body = transform.Find("Body");
+        if (body != null && body.TryGetComponent<SkinnedMeshRenderer>(out var renderer))
+            cachedMaterial = renderer.material;
     }
 
     void Update()
@@ -127,7 +128,7 @@ public class Agent : MonoBehaviour
     if (ThresholdLandscapeManager.I == null) return;
 
     /* 1 ─ Occupancy 갱신 : Moving 단계에서 프레임당 한 번만 */
-    if (phase == Phase.Moving)
+    if (phase == Phase.Moving && !nav.pathPending && nav.remainingDistance <= nav.stoppingDistance)
         ThresholdLandscapeManager.I.UpdateOccupancy(
             gameObject, currentRoom, out currentRoom);
 
@@ -368,6 +369,13 @@ public class Agent : MonoBehaviour
         Animator anim = GetComponent<Animator>();
         if (!anim) return;
         anim.SetInteger("SatisfactionState", (int)currentState);
+        
+        if (cachedMaterial != null)
+        {
+            cachedMaterial.color = (currentState == SatisfactionState.UnSatisfied)
+                ? Color.red
+                : Color.white;
+        }
     }
 
     /* ───── 휴식 종료 ───── */

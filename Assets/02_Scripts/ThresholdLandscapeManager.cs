@@ -7,7 +7,7 @@ public class ThresholdLandscapeManager : MonoBehaviour
     public static ThresholdLandscapeManager I { get; private set; }
     void Awake() => I = this;
 
-    /* ───── 방 인덱스(12칸) ───── */
+    /* 방 인덱스(12칸) */
     static readonly int[] idx = { 1,2, 4,5, 7,8, 11,12, 14,15, 17,18 };
     readonly Dictionary<int, GameObject> reserved = new();   // roomId → 예약자
     
@@ -22,24 +22,33 @@ public class ThresholdLandscapeManager : MonoBehaviour
 
     public class GroupInfo
     {
-        public readonly List<int> roomIds = new();          // 이 블록 안 방ID
+        public readonly List<int> roomIds = new();
+        public float unsatisfiedDuration = 0f;   // 누적된 불만족 시간
+        public bool isRed = false;              // 이미 빨간 상태인지
+        
+        public float coolDownTimer = 0f;  // 복구 전 대기시간
     }
-    readonly Dictionary<int, GroupInfo> groups = new();     // groupId(0‥35) → info
-    readonly Dictionary<int, int>       roomToGroup = new();// roomId → groupId
-
-    /* ───── 그리드 파라미터 ───── */
-    const int GRID = 20;           // 0‥19
+    readonly Dictionary<int, GroupInfo> groups = new();
+    readonly Dictionary<int, int>       roomToGroup = new();
+    
+    const int GRID = 20;
     [SerializeField] float cellGap = 1f;
     const float Y = 0.5f;
-
-    /* ───── 초기 스폰 설정 ───── */
+    
     [Header("에이전트 프리팹")]
     [SerializeField] GameObject mainPrefab;
     [SerializeField] GameObject targetPrefab;
+    
     [Header("비율")]
     [Range(0,1)] public float mainRatio = .7f;
     [Range(0,1)] public float targetRatio = .3f;
-    [SerializeField] int spawn = 132;           // 생성 수
+    [SerializeField] int spawn = 132;
+    
+    [SerializeField] float unsatisfiedThresholdSec = 2.4f;
+    [SerializeField] int minUnhappyAgents = 2;
+    [SerializeField] float recoverCooldown = 5f; // 복구까지 대기 시간 (초)
+    
+    readonly Dictionary<int, List<Renderer>> groupRenderers = new();
     
     
     public bool IsReserved(int roomId) => reserved.ContainsKey(roomId);
@@ -48,42 +57,112 @@ public class ThresholdLandscapeManager : MonoBehaviour
 
     void Start()
     {
-        InitRooms();          // 흰 셀 144개 등록
-        SpawnInitialAgents(); // 길/방 구분 없이 144개 무작위 배치
+        InitRooms();        
+        SpawnInitialAgents();
+        InitGroupRenderers();
     }
     
-    /* 144개 방 등록 */
+    void InitGroupRenderers()
+    {
+        GameObject root = GameObject.Find("_ROOM");
+        for (int i = 0; i < 36; i++) // ROOM01~ROOM36
+        {
+            string groupName = $"ROOM{i + 1:D2}";
+            Transform group = root.transform.Find(groupName);
+            if (group == null) continue;
+
+            var renderers = new List<Renderer>();
+            foreach (Transform child in group)
+            {
+                if (child.TryGetComponent<RoomandRoad>(out var tag) &&
+                    tag.spaceType == RoomandRoad.SpaceType.Room &&
+                    child.TryGetComponent<Renderer>(out var rend))
+                {
+                    renderers.Add(rend);
+                }
+            }
+            groupRenderers[i] = renderers;
+        }
+    }
+    
     void InitRooms()
     {
         int id = 0;
-        foreach (int z in idx)
+        for (int gz = 0; gz < 6; gz++) // 그룹 줄 (아래→위)
+        for (int gx = 0; gx < 6; gx++) // 그룹 칸 (왼→오른쪽)
         {
-            int zPos = System.Array.IndexOf(idx, z);        // 0‥11
-            int gZ   = zPos >> 1;                           // 0‥5
+            int groupId = (5 - gz) * 6 + gx; // ✅ 행우선 + z축 반전 (ROOM01이 좌하단)
 
-            foreach (int x in idx)
+            for (int dz = 0; dz < 2; dz++)
+            for (int dx = 0; dx < 2; dx++)
             {
-                int xPos   = System.Array.IndexOf(idx, x);  // 0‥11
-                int gX     = xPos >> 1;                     // 0‥5
-                int gId    = gZ * 6 + gX;                   // 0‥35
+                int x = idx[gx * 2 + dx];
+                int z = idx[gz * 2 + dz];
 
-                /* ─ 방 등록 ─ */
-                Vector3 p = new(x * cellGap, Y, -z * cellGap);
+                Vector3 p = new Vector3(x * cellGap, Y, -z * cellGap);
                 rooms.Add(id, new RoomInfo { pos = p, occupant = null });
 
-                /* ─ 그룹 등록 ─ */
-                if (!groups.ContainsKey(gId)) groups[gId] = new GroupInfo();
-                groups[gId].roomIds.Add(id);
-                roomToGroup[id] = gId;
-
-                /* 역매핑 (xi,zi) → roomId */
+                if (!groups.ContainsKey(groupId)) groups[groupId] = new GroupInfo();
+                groups[groupId].roomIds.Add(id);
+                roomToGroup[id] = groupId;
                 gridToRoomId[(x, z)] = id;
+
                 id++;
             }
         }
     }
-    
-    /* ───── 위치 → roomId 판정 ───── */
+
+    void Update()
+    {
+        foreach (var kvp in groups)
+        {
+            int groupId = kvp.Key;
+            var group = kvp.Value;
+            
+            foreach (int rid in group.roomIds)
+            {
+                if (rooms.TryGetValue(rid, out var info) && info.occupant != null)
+                {
+                    var agent = info.occupant.GetComponent<Agent>();
+                    if (agent != null)
+                    {
+                        string match = agent.currentState == Agent.SatisfactionState.UnSatisfied ? "❗" : "";
+                        Debug.Log($"[Group {groupId}] roomId {rid} → {agent.name}, state: {agent.currentState} {match}");
+                    }
+                }
+            }
+
+            var agents = group.roomIds
+                .Where(id => rooms.TryGetValue(id, out var r) && r.occupant != null)
+                .Select(id => rooms[id].occupant.GetComponent<Agent>())
+                .Where(a => a != null)
+                .ToList();
+
+            int unhappyCount = agents.Count(a => a.currentState == Agent.SatisfactionState.UnSatisfied);
+
+            if (unhappyCount >= minUnhappyAgents)
+            {
+                group.unsatisfiedDuration += Time.deltaTime;
+
+                if (!group.isRed && group.unsatisfiedDuration >= unsatisfiedThresholdSec)
+                {
+                    group.isRed = true;
+                    SetGroupColor(groupId, Color.red);
+                    Debug.Log($"[그룹 {groupId}] 상태 RED 전환");
+                }
+            }
+        }
+    }
+
+    void SetGroupColor(int groupId, Color color)
+    {
+        if (!groupRenderers.TryGetValue(groupId, out var renderers)) return;
+
+        foreach (var r in renderers)
+            r.material.color = color;
+    }
+
+    /* 위치 → roomId 판정 */
     public bool TryGetRoomIdByPosition(Vector3 pos, out int roomId)
     {
         int xi = Mathf.RoundToInt( pos.x / cellGap );
@@ -102,7 +181,7 @@ public class ThresholdLandscapeManager : MonoBehaviour
         int mainCnt   = Mathf.RoundToInt(spawn * mainRatio);
         int targetCnt = spawn - mainCnt;
 
-        int p = 0;        // ★ idx → p 로 변경
+        int p = 0;
         for (int i = 0; i < mainCnt;   i++) Instantiate(mainPrefab,   cells[p++], Quaternion.identity, transform);
         for (int i = 0; i < targetCnt; i++) Instantiate(targetPrefab, cells[p++], Quaternion.identity, transform);
     }
@@ -133,38 +212,48 @@ public class ThresholdLandscapeManager : MonoBehaviour
     public void     OccupyRoom(int id, GameObject a)=> rooms[id].occupant = a;
     public void     VacateRoom(int id)              { if (id>=0) rooms[id].occupant=null; }
 
-    public bool TryReserveFreeRoom(out int id, GameObject agent, int exclude = -1)
+    public bool TryReserveFreeRoom(out int id, GameObject agentObj, int exclude = -1)
     {
         id = -1;
+        var agent = agentObj.GetComponent<Agent>();
+        if (agent == null) return false;
         
-        // 예약·점유 모두 없는 방 목록
         var free = rooms
-            .Where(kv => kv.Key != exclude &&
-                         kv.Value.occupant == null &&
-                         !reserved.ContainsKey(kv.Key))
+            .Where(kv =>
+            {
+                if (kv.Key == exclude) return false;
+                if (kv.Value.occupant != null || reserved.ContainsKey(kv.Key)) return false;
+
+                // Target만 빨간 방 제외
+                if (agent.label == Agent.Label.Target &&
+                    roomToGroup.TryGetValue(kv.Key, out var groupId) &&
+                    groups.TryGetValue(groupId, out var group) &&
+                    group.isRed)
+                    return false;
+
+                return true;
+            })
             .Select(kv => kv.Key)
             .ToList();
 
         while (free.Count > 0)
         {
-            // 무작위 후보
             int pick = Random.Range(0, free.Count);
             int candidate = free[pick];
-            free.RemoveAt(pick);                  // 실패하면 다른 방을 고르기 위해 제거
+            free.RemoveAt(pick);
 
-            // 더블-체크
             if (rooms[candidate].occupant != null || reserved.ContainsKey(candidate))
-                continue;                        // 이미 누가 선점 → 다음 후보
+                continue;
 
-            reserved[candidate] = agent;         // 최종 예약
+            reserved[candidate] = agentObj;
             id = candidate;
             return true;
         }
 
-        return false;  
+        return false;
     }
-    
-    /* ───── Occupancy 갱신 ───── */
+
+    /* Occupancy 갱신 */
     public void UpdateOccupancy(GameObject agent, int prevRoomId, out int newRoomId)
     {
         newRoomId = -1;
