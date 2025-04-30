@@ -9,6 +9,7 @@ public class ThresholdLandscapeManager : MonoBehaviour
 
     /* ───── 방 인덱스(12칸) ───── */
     static readonly int[] idx = { 1,2, 4,5, 7,8, 11,12, 14,15, 17,18 };
+    readonly Dictionary<int, GameObject> reserved = new();   // roomId → 예약자
     
     /* ───── 룸 테이블 ───── */
     public class RoomInfo
@@ -40,6 +41,11 @@ public class ThresholdLandscapeManager : MonoBehaviour
     [Range(0,1)] public float targetRatio = .3f;
     [SerializeField] int spawn = 140;           // 생성 수
     
+    
+    public bool IsReserved(int roomId) => reserved.ContainsKey(roomId);
+    public bool IsReservedBy(int roomId, GameObject agent) =>
+        reserved.TryGetValue(roomId, out var holder) && holder == agent;
+
     void Start()
     {
         InitRooms();          // 흰 셀 144개 등록
@@ -127,19 +133,35 @@ public class ThresholdLandscapeManager : MonoBehaviour
     public void     OccupyRoom(int id, GameObject a)=> rooms[id].occupant = a;
     public void     VacateRoom(int id)              { if (id>=0) rooms[id].occupant=null; }
 
-    public bool TryReserveFreeRoom(out int id, int exclude=-1)
+    public bool TryReserveFreeRoom(out int id, GameObject agent, int exclude = -1)
     {
         id = -1;
-        List<int> free = new();
         
-        foreach (var kv in rooms)
-            if (kv.Key != exclude && kv.Value.occupant == null)
-                free.Add(kv.Key);
+        // 예약·점유 모두 없는 방 목록
+        var free = rooms
+            .Where(kv => kv.Key != exclude &&
+                         kv.Value.occupant == null &&
+                         !reserved.ContainsKey(kv.Key))
+            .Select(kv => kv.Key)
+            .ToList();
 
-        if (free.Count==0) return false;
-        
-        id = free[Random.Range(0, free.Count)];
-        return true;
+        while (free.Count > 0)
+        {
+            // 무작위 후보
+            int pick = Random.Range(0, free.Count);
+            int candidate = free[pick];
+            free.RemoveAt(pick);                  // 실패하면 다른 방을 고르기 위해 제거
+
+            // 더블-체크
+            if (rooms[candidate].occupant != null || reserved.ContainsKey(candidate))
+                continue;                        // 이미 누가 선점 → 다음 후보
+
+            reserved[candidate] = agent;         // 최종 예약
+            id = candidate;
+            return true;
+        }
+
+        return false;  
     }
     
     /* ───── Occupancy 갱신 ───── */
@@ -165,6 +187,14 @@ public class ThresholdLandscapeManager : MonoBehaviour
 
         // 다른 에이전트가 점유 중이면 실패
         if (rooms[id].occupant != null) return;
+        
+        // 예약인데 나 아닌가?
+        if (reserved.TryGetValue(id, out var holder))
+        {
+            if (holder != agent)          // 남이 예약 → 점유 금지
+                return;                   // 그대로 길로 간주
+            reserved.Remove(id);          // 내 예약이면 소유권 인계
+        }
 
         // 빈 방 → 점유
         OccupyRoom(id, agent);
@@ -173,51 +203,47 @@ public class ThresholdLandscapeManager : MonoBehaviour
 
         newRoomId = id;
     }
-    
-    public int GetOccupiedCount(int groupId)
+
+    /* ─ 실제 도착했을 때만 Occupy ─ */
+    public void OnRoomArrived(int roomId, GameObject agent)
     {
-        if (!groups.TryGetValue(groupId, out var g)) return 0;
+        if (rooms[roomId].occupant != null && rooms[roomId].occupant != agent)
+            return;
 
-        int cnt = 0;
-        foreach (int r in g.roomIds)
-            if (rooms[r].occupant != null) cnt++;
-
-        return cnt;
+        if (reserved.TryGetValue(roomId, out var holder)) 
+        { 
+            // 남의 예약이면 실패
+            if (holder != agent)           
+                return;
+            reserved.Remove(roomId);       // 내 예약 → 소유권 인계
+        } 
+        rooms[roomId].occupant = agent;    // 이제 점유
     }
-    
-    /* 방 중심에서 가장 가까운 Road 좌표 반환 */
+
+/* ─ 실패·포기 시 예약 해제 ─ */
+    public void CancelReservation(int roomId, GameObject agent)
+    {
+        if (reserved.TryGetValue(roomId, out var holder) && holder == agent)
+            reserved.Remove(roomId);
+    }
+
+    /* ─ 방 중심에서 가장 가까운 Road 좌표 반환 ─ */
     public Vector3 GetNearestRoadPos(int roomId)
     {
+        if (roomId < 0 || !rooms.ContainsKey(roomId))
+            return Vector3.zero;        // 혹은 transform.position …
+
         Vector3 p = rooms[roomId].pos;
-        // 네 방향 중 ‘길’(idx 배열에 없는 칸)만 후보
-        Vector3[] dir = { Vector3.right, Vector3.left, Vector3.forward, Vector3.back };
-        
+        Vector3[] dir = { Vector3.right, Vector3.left,
+            Vector3.forward, Vector3.back };
+
         foreach (var d in dir)
         {
-            Vector3 q = p + d * cellGap;
-            if (!TryGetRoomIdByPosition(q, out _))      // 방이 아니면 길
+            Vector3 q = p + d * cellGap;      // 주변 한 칸
+            if (!TryGetRoomIdByPosition(q, out _))   // 방이 아니면 길
                 return q;
         }
-        return p;   // 안전: 못 찾으면 제자리
+        return p;                             // (안전용) 네 면이 전부 방일 일은 없음
     }
-    
-    /* 사용 가능 빈방을 “선점”해서 반환
-   성공하면 true, 실패면 false  */
-    public bool TryTakeFreeRoom(out int id, int exclude = -1, GameObject agent = null)
-    {
-        id = -1;
-
-        List<int> free = new();
-        foreach (var kv in rooms)
-            if (kv.Key != exclude && kv.Value.occupant == null)
-                free.Add(kv.Key);
-
-        if (free.Count == 0) return false;
-
-        id = free[Random.Range(0, free.Count)];
-        rooms[id].occupant = agent;           // ★ 여기서 즉시 점유
-        return true;
-    }
-
 
 }
