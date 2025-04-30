@@ -461,9 +461,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6e9fedf44054d46b0a2e536af561e763, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  label: 1
   audioSource: {fileID: 8840318769974463085}
   cryClip: {fileID: 8300000, guid: fbfcace4520a0db46bb8bfc575cc37b7, type: 3}
-  gapRange: {x: 4, y: 8}
+  gapRange: {x: 3, y: 6}
 --- !u!135 &5550630618553577986
 SphereCollider:
   m_ObjectHideFlags: 0

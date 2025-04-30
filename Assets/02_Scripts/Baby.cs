@@ -2,6 +2,13 @@ using UnityEngine;
 using System.Collections;
 public class Baby : MonoBehaviour
 {
+    public enum Label 
+    {
+        Main,   // Adult-only
+        Target  // Caregiver + Child (배제 대상)
+    } 
+    public Label label = Label.Target;  
+    
     [Header("Audio")]
     [SerializeField] AudioSource audioSource;   // Baby 오브젝트에 AudioSource
     [SerializeField] AudioClip   cryClip;       // 2초짜리 울음 파일
@@ -11,16 +18,16 @@ public class Baby : MonoBehaviour
 
     Coroutine cryCR;
     float clipLen;
+    bool isCrying = true; 
 
-    public bool IsCrying { get; private set; }  
+    public bool IsCrying() => isCrying;
     
     void Awake()
     {
         audioSource ??= GetComponent<AudioSource>();
         clipLen = cryClip.length;
     }
-
-    /* ───────── Agent → Baby 신호 ───────── */
+    
     public void OnRoomStatusChanged(bool inRoom)
     {
         if (inRoom)
@@ -32,21 +39,21 @@ public class Baby : MonoBehaviour
             if (cryCR != null) StopCoroutine(cryCR);
             cryCR = null;
             audioSource.Stop();
+            isCrying = false;
         }
     }
-
-    /* ───────── 간헐적 울음 ───────── */
+    
     IEnumerator CryLoop()
     {
         yield return new WaitForSeconds(Random.Range(0.5f, 2f));
 
         while (true)
         {
-            IsCrying = true;                    // ← 시작
+            isCrying = true;
             audioSource.PlayOneShot(cryClip);
             yield return new WaitForSeconds(cryClip.length);
-            IsCrying = false;                   // ← 끝
 
+            isCrying = false;
             float gap = Random.Range(gapRange.x, gapRange.y);
             yield return new WaitForSeconds(gap);
         }

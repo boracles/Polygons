@@ -58,7 +58,6 @@ public class Zone
         {
             if (a.label == Agent.Label.Main)
             {
-                biasSum   += a.bias;
                 mainCount ++;
             }
             else if (a.label == Agent.Label.Target)

@@ -233,12 +233,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   place: 0
   label: 1
-  bias: 0
+  kind: 1
+  trait: 3
   currentState: 2
   color: 0
-  restMin: 20
-  restMax: 30
+  restMin: 30
+  restMax: 50
   roadWanderRadius: 2
+  stressDecayRate: 1
+  inclusiveness: 0.5
 --- !u!195 &9175643220104931648
 NavMeshAgent:
   m_ObjectHideFlags: 0

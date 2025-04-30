@@ -32,7 +32,7 @@ public class Agent : MonoBehaviour
     } 
     public Label label = Label.Main;    // Main이 기본값
     
-    public enum AgentKind { Normal, Target }      // 역할
+    public enum AgentKind { Normal, Target }
     public enum Trait     { Inclusive, Exclusive, Resistant, Avoidant }
 
     [Header("역할 & 성향")]
@@ -41,8 +41,7 @@ public class Agent : MonoBehaviour
 
     [Header("분리 상태")]
     public SatisfactionState currentState = SatisfactionState.Satisfied;
-
-    // 1=검정, 2=흰색
+    
     public int color;
 
     NavMeshAgent nav;
@@ -51,6 +50,15 @@ public class Agent : MonoBehaviour
     [SerializeField] float restMin = 5.0f;
     [SerializeField] float restMax = 10.0f;
     [SerializeField] float roadWanderRadius = 2f;
+    
+    [SerializeField] float stressDecayRate = 0.3f;   // 울음이 없을 때 감쇠 속도
+
+    [SerializeField] [Range(0f, 1f)]
+    float inclusiveness = 0.5f; //(0: 배제적 - 1: 포용적)
+    float BaseThreshold => 3f;
+    float stressThreshold => Mathf.Lerp(0.2f, 1.0f, inclusiveness);
+    
+    float cryAccum = 0f;       // 누적 스트레스
     
     float stillTimer = 0f;
     
@@ -102,6 +110,15 @@ public class Agent : MonoBehaviour
             phase = Phase.Resting;          // 상태 전환
             StartCoroutine(EnableObstacleNextFrame());  // ★ 휴식 코루틴 시동
         }
+        
+        switch (trait)
+        {
+            case Trait.Inclusive: inclusiveness = 1f; break;
+            case Trait.Exclusive: inclusiveness = 0f; break;
+            default: inclusiveness = 0.5f; break;
+        }
+
+        Debug.Log($"{name} 초기 포용성: {inclusiveness}");
     }
 
     void Update()
@@ -195,6 +212,27 @@ public class Agent : MonoBehaviour
     else
     {
         stillTimer = 0f;
+    }
+    
+    if (label == Label.Main && place == PlaceState.Room)
+    {
+        bool cryingInRoom = ThresholdLandscapeManager.I.IsSomeoneCryingInRoom(currentRoom);
+
+        if (cryingInRoom)
+        {
+            cryAccum += Time.deltaTime;
+            
+        }
+        else
+        {
+            cryAccum = Mathf.Max(0f, cryAccum - Time.deltaTime * stressDecayRate);
+        }
+
+        if (cryAccum >= stressThreshold)
+        {
+            Debug.Log($"{name} → 임계치 초과! 상태 전환: UnSatisfied");
+            SetState(SatisfactionState.UnSatisfied);
+        }
     }
 }
 
@@ -321,7 +359,6 @@ public class Agent : MonoBehaviour
     {
         Animator anim = GetComponent<Animator>();
         if (!anim) return;
-        anim.SetBool("IsInRoom", place == PlaceState.Room);
         anim.SetInteger("SatisfactionState", (int)currentState);
     }
 

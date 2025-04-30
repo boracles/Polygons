@@ -245,5 +245,35 @@ public class ThresholdLandscapeManager : MonoBehaviour
         }
         return p;                             // (안전용) 네 면이 전부 방일 일은 없음
     }
+    
+    public bool IsSomeoneCryingInRoom(int roomId)
+    {
+        if (!rooms.TryGetValue(roomId, out var info)) return false;
+        if (info.occupant == null) return false;
+
+        Collider[] colliders = Physics.OverlapSphere(info.pos, 0.5f);
+
+        foreach (var col in colliders)
+        {
+            // Agent 기반 탐지
+            if (col.TryGetComponent<Agent>(out var agent) &&
+                agent != info.occupant &&
+                agent.label == Agent.Label.Target)
+            {
+                var baby = agent.GetComponent<Baby>();
+                if (baby != null && baby.IsCrying()) return true;
+            }
+
+            // Baby 감지
+            if (col.TryGetComponent<Baby>(out var standaloneBaby) &&
+                standaloneBaby != null && standaloneBaby.IsCrying())
+            {
+                Debug.Log($"Baby {standaloneBaby.name} is crying (detected without Agent)");
+                return true;
+            }
+        }
+
+        return false;
+    }
 
 }

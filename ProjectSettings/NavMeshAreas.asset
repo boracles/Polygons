@@ -14,7 +14,7 @@ NavMeshProjectSettings:
   - name: ROAD
     cost: 1
   - name: ROOM
-    cost: 5
+    cost: 7
   - name: 
     cost: 1
   - name: 
