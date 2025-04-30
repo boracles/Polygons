@@ -235,8 +235,8 @@ MonoBehaviour:
   bias: 0
   currentState: 2
   color: 0
-  restMin: 10
-  restMax: 16
+  restMin: 15
+  restMax: 20
   roadWanderRadius: 2
 --- !u!195 &6283630701960046299
 NavMeshAgent:

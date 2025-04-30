@@ -236,8 +236,8 @@ MonoBehaviour:
   bias: 0
   currentState: 2
   color: 0
-  restMin: 12
-  restMax: 24
+  restMin: 20
+  restMax: 25
   roadWanderRadius: 2
 --- !u!195 &9175643220104931648
 NavMeshAgent:
@@ -247,7 +247,7 @@ NavMeshAgent:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 3351737530330129455}
   m_Enabled: 1
-  m_AgentTypeID: -902729914
+  m_AgentTypeID: 287145453
   m_Radius: 0.5
   m_Speed: 1.2
   m_Acceleration: 8

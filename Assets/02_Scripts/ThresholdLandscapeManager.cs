@@ -39,7 +39,7 @@ public class ThresholdLandscapeManager : MonoBehaviour
     [Header("비율")]
     [Range(0,1)] public float mainRatio = .7f;
     [Range(0,1)] public float targetRatio = .3f;
-    [SerializeField] int spawn = 140;           // 생성 수
+    [SerializeField] int spawn = 132;           // 생성 수
     
     
     public bool IsReserved(int roomId) => reserved.ContainsKey(roomId);
