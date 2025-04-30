@@ -42,8 +42,8 @@ public class Agent : MonoBehaviour
     NavMeshAgent nav;
     private NavMeshObstacle obs;
     
-    [SerializeField] float restMin = 3f;
-    [SerializeField] float restMax = 7f;
+    [SerializeField] float restMin = 5.0f;
+    [SerializeField] float restMax = 10.0f;
     [SerializeField] float roadWanderRadius = 2f;
     
     float stillTimer = 0f;
@@ -78,6 +78,8 @@ public class Agent : MonoBehaviour
     {
         nav = GetComponent<NavMeshAgent>(); // NavMeshAgent가 없다면 null
         obs = GetComponent<NavMeshObstacle>();
+        
+        nav.avoidancePriority = Random.Range(20, 80);
     }
     
     void Start()
@@ -250,7 +252,7 @@ public class Agent : MonoBehaviour
         float dist = Vector3.Distance(transform.position,
             ThresholdLandscapeManager.I.GetRoomPosition(rid));
         float travelTime = dist / nav.speed;   // nav.speed == 3 → 10m ≈ 3.3s
-        float buffer = 1.0f;                   // 여유
+        float buffer = 0.3f;                   // 여유
         reservationCR = StartCoroutine(
             ReservationTimeout(rid, travelTime + buffer));
         
