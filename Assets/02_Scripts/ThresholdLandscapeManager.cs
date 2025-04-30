@@ -1,10 +1,12 @@
 using UnityEngine;
 using System.Collections.Generic;
-using System.Linq;
 
 public class ThresholdLandscapeManager : MonoBehaviour
 {
     public static ThresholdLandscapeManager I { get; private set; }
+    
+    readonly List<int> freeCache = new List<int>(400);
+    
     void Awake() => I = this;
 
     /* ───── 방 인덱스(12칸) ───── */
@@ -30,7 +32,7 @@ public class ThresholdLandscapeManager : MonoBehaviour
     /* ───── 그리드 파라미터 ───── */
     const int GRID = 20;           // 0‥19
     [SerializeField] float cellGap = 1f;
-    const float Y = 0.5f;
+    [SerializeField] float roomHeight = 0.5f; 
 
     /* ───── 초기 스폰 설정 ───── */
     [Header("에이전트 프리팹")]
@@ -39,36 +41,46 @@ public class ThresholdLandscapeManager : MonoBehaviour
     [Header("비율")]
     [Range(0,1)] public float mainRatio = .7f;
     [Range(0,1)] public float targetRatio = .3f;
-    [SerializeField] int spawn = 132;           // 생성 수
+    [SerializeField] int initialSpawnCount = 132;
     
     
     public bool IsReserved(int roomId) => reserved.ContainsKey(roomId);
     public bool IsReservedBy(int roomId, GameObject agent) =>
         reserved.TryGetValue(roomId, out var holder) && holder == agent;
 
+    static readonly Vector3[] DIRS =    // 매 호출 GC 0
+    {
+        Vector3.right,
+        Vector3.left,
+        Vector3.forward,
+        Vector3.back
+    };
+    
     void Start()
     {
-        InitRooms();          // 흰 셀 144개 등록
-        SpawnInitialAgents(); // 길/방 구분 없이 144개 무작위 배치
+        InitRooms();
+        SpawnInitialAgents();
     }
     
-    /* 144개 방 등록 */
     void InitRooms()
     {
+        var idxToOrder = new Dictionary<int,int>();
+        for (int i = 0; i < idx.Length; i++) idxToOrder[idx[i]] = i;
+
         int id = 0;
         foreach (int z in idx)
         {
-            int zPos = System.Array.IndexOf(idx, z);        // 0‥11
-            int gZ   = zPos >> 1;                           // 0‥5
+            int zPos = idxToOrder[z];
+            int gZ   = zPos >> 1;
 
             foreach (int x in idx)
             {
-                int xPos   = System.Array.IndexOf(idx, x);  // 0‥11
-                int gX     = xPos >> 1;                     // 0‥5
-                int gId    = gZ * 6 + gX;                   // 0‥35
+                int xPos = idxToOrder[x];
+                int gX   = xPos >> 1;
+                int gId  = gZ * 6 + gX;
 
                 /* ─ 방 등록 ─ */
-                Vector3 p = new(x * cellGap, Y, -z * cellGap);
+                Vector3 p = new(x * cellGap, roomHeight, -z * cellGap); 
                 rooms.Add(id, new RoomInfo { pos = p, occupant = null });
 
                 /* ─ 그룹 등록 ─ */
@@ -86,23 +98,32 @@ public class ThresholdLandscapeManager : MonoBehaviour
     /* ───── 위치 → roomId 판정 ───── */
     public bool TryGetRoomIdByPosition(Vector3 pos, out int roomId)
     {
-        int xi = Mathf.RoundToInt( pos.x / cellGap );
-        int zi = Mathf.RoundToInt(-pos.z / cellGap );
-        
+        roomId = -1;                              // 3) 실패값 미리 설정
+
+        // 2) 그리드 바깥이면 즉시 false
+        if (pos.x < 0f || pos.x >= GRID * cellGap ||
+            -pos.z < 0f || -pos.z >= GRID * cellGap)
+            return false;
+
+        const float EPS = 1e-4f;                  // 1) 경계 오차
+        float half = 0.5f * cellGap;
+
+        int xi = Mathf.FloorToInt((pos.x + half + EPS) / cellGap);
+        int zi = Mathf.FloorToInt((-pos.z + half + EPS) / cellGap);
+
         return gridToRoomId.TryGetValue((xi, zi), out roomId);
     }
     
-    /* ───────── 초기 144개 에이전트 스폰 ───────── */
     void SpawnInitialAgents()
     {
-        List<Vector3> cells = GenerateAllCells();   // 400칸
+        List<Vector3> cells = GenerateAllCells();
         Shuffle(cells);
-        cells.RemoveRange(spawn, cells.Count - spawn); // 앞쪽 144칸 사용
+        cells.RemoveRange(initialSpawnCount, cells.Count - initialSpawnCount);
 
-        int mainCnt   = Mathf.RoundToInt(spawn * mainRatio);
-        int targetCnt = spawn - mainCnt;
+        int mainCnt   = Mathf.RoundToInt(initialSpawnCount * mainRatio);
+        int targetCnt = initialSpawnCount - mainCnt;
 
-        int p = 0;        // ★ idx → p 로 변경
+        int p = 0;
         for (int i = 0; i < mainCnt;   i++) Instantiate(mainPrefab,   cells[p++], Quaternion.identity, transform);
         for (int i = 0; i < targetCnt; i++) Instantiate(targetPrefab, cells[p++], Quaternion.identity, transform);
     }
@@ -113,7 +134,7 @@ public class ThresholdLandscapeManager : MonoBehaviour
         var list = new List<Vector3>(GRID * GRID);
         for (int z = 0; z < GRID; z++)
         for (int x = 0; x < GRID; x++)
-            list.Add(new Vector3(x*cellGap, Y, -z*cellGap));
+            list.Add(new Vector3(x * cellGap, roomHeight, -z * cellGap));  // ★ Y → roomHeight
         return list;
     }
 
@@ -137,31 +158,38 @@ public class ThresholdLandscapeManager : MonoBehaviour
     {
         id = -1;
         
-        // 예약·점유 모두 없는 방 목록
-        var free = rooms
-            .Where(kv => kv.Key != exclude &&
-                         kv.Value.occupant == null &&
-                         !reserved.ContainsKey(kv.Key))
-            .Select(kv => kv.Key)
-            .ToList();
-
-        while (free.Count > 0)
+        /* 0) 후보 리스트 재사용 ─ GC 0 */
+        freeCache.Clear();
+        if (freeCache.Capacity < rooms.Count)      // 맵 확장 대비
+            freeCache.Capacity = rooms.Count;
+        
+        foreach (var kv in rooms)
         {
-            // 무작위 후보
-            int pick = Random.Range(0, free.Count);
-            int candidate = free[pick];
-            free.RemoveAt(pick);                  // 실패하면 다른 방을 고르기 위해 제거
-
-            // 더블-체크
-            if (rooms[candidate].occupant != null || reserved.ContainsKey(candidate))
-                continue;                        // 이미 누가 선점 → 다음 후보
-
-            reserved[candidate] = agent;         // 최종 예약
-            id = candidate;
-            return true;
+            int key = kv.Key;
+            if (key == exclude)                continue;
+            if (kv.Value.occupant != null)     continue;
+            if (reserved.ContainsKey(key))     continue;
+            freeCache.Add(key);
         }
 
-        return false;  
+        int n = freeCache.Count;
+        if (n == 0) return false;
+
+        /* 1) Fisher–Yates 1-pass */
+        for (int i = n - 1; i >= 0; i--)
+        {
+            int j = Random.Range(0, i + 1);
+            (freeCache[i], freeCache[j]) = (freeCache[j], freeCache[i]);
+            int candidate = freeCache[i];
+
+            if (rooms[candidate].occupant == null && !reserved.ContainsKey(candidate))
+            {
+                reserved[candidate] = agent;
+                id = candidate;
+                return true;
+            }
+        }
+        return false;   // 모든 후보 경합
     }
     
     /* ───── Occupancy 갱신 ───── */
@@ -220,30 +248,38 @@ public class ThresholdLandscapeManager : MonoBehaviour
         rooms[roomId].occupant = agent;    // 이제 점유
     }
 
-/* ─ 실패·포기 시 예약 해제 ─ */
+    /* 본인 확인용 – 기존 함수를 그대로 둔다 */
     public void CancelReservation(int roomId, GameObject agent)
     {
         if (reserved.TryGetValue(roomId, out var holder) && holder == agent)
             reserved.Remove(roomId);
     }
 
+    /* 강제 해제용 – agent 체크 없이 제거 */
+    public void CancelReservation(int roomId)
+    {
+        if (!reserved.Remove(roomId))
+            Debug.LogWarning($"[ThresholdLandscape] CancelReservation 실패: " +
+                             $"room {roomId} 에 활성 예약이 없습니다.");
+    }
+
     /* ─ 방 중심에서 가장 가까운 Road 좌표 반환 ─ */
     public Vector3 GetNearestRoadPos(int roomId)
     {
         if (roomId < 0 || !rooms.ContainsKey(roomId))
-            return Vector3.zero;        // 혹은 transform.position …
+            return Vector3.zero;
 
         Vector3 p = rooms[roomId].pos;
-        Vector3[] dir = { Vector3.right, Vector3.left,
-            Vector3.forward, Vector3.back };
 
-        foreach (var d in dir)
+        foreach (var d in DIRS)            // ← DIRS 사용
         {
-            Vector3 q = p + d * cellGap;      // 주변 한 칸
-            if (!TryGetRoomIdByPosition(q, out _))   // 방이 아니면 길
-                return q;
+            Vector3 q = p + d * cellGap;
+            if (!TryGetRoomIdByPosition(q, out _))
+                return q;                  // 첫 번째 길 좌표 즉시 반환
         }
-        return p;                             // (안전용) 네 면이 전부 방일 일은 없음
+
+        /* 실질적으로 발생하기 어려운 경우 대비 */
+        return p + Vector3.forward * cellGap;
     }
 
 }

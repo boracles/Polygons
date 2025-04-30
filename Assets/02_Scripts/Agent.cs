@@ -25,6 +25,8 @@ public class Agent : MonoBehaviour
     Coroutine restCR;
     Coroutine reservationCR;  
 
+    float leavingTimer = 0f;
+    
     public enum Label 
     {
         Main,   // Adult-only
@@ -32,12 +34,12 @@ public class Agent : MonoBehaviour
     } 
     public Label label = Label.Main;    // Main이 기본값
     
-    public enum AgentKind { Normal, Target }      // 역할
+    public enum AgentKind { Main, Target }      // 역할
     public enum Trait     { Inclusive, Exclusive, Resistant, Avoidant }
-
+    
     [Header("역할 & 성향")]
-    public AgentKind kind = AgentKind.Normal;     // 인스펙터에서 설정
-    public Trait     trait = Trait.Inclusive;
+    public AgentKind kind  = AgentKind.Main;
+    public Trait     trait = Trait.Inclusive;   
 
     [Header("분리 상태")]
     public SatisfactionState currentState = SatisfactionState.Satisfied;
@@ -55,7 +57,9 @@ public class Agent : MonoBehaviour
     float stillTimer = 0f;
     
     PlaceState prevPlace = PlaceState.Road;   // 직전 장소 저장
-
+    float cryTolerance;           // Awake()에서 값 결정 (이미 있음)
+    float cryStress = 0f;         // ★ NEW : 누적 울음 스트레스
+    
     // 이웃 ratio에 따라 본인의 state를 결정
     public void SetStateByRatio(float ratio)
     {
@@ -84,8 +88,27 @@ public class Agent : MonoBehaviour
 
     void Awake()
     {
-        nav = GetComponent<NavMeshAgent>(); // NavMeshAgent가 없다면 null
+        nav = GetComponent<NavMeshAgent>();
         obs = GetComponent<NavMeshObstacle>();
+        
+        /* ─ 역할/성향 불일치 보정 ─ */
+        if (kind == AgentKind.Main &&
+            (trait == Trait.Resistant || trait == Trait.Avoidant))
+            trait = Trait.Inclusive;      // 기본값으로 교체
+
+        if (kind == AgentKind.Target &&
+            (trait == Trait.Inclusive || trait == Trait.Exclusive))
+            trait = Trait.Resistant;      // 기본값으로 교체
+
+        /* ─ 내성(cryTolerance) 설정 ─ */
+        cryTolerance = trait switch
+        {
+            Trait.Inclusive  => 6f,
+            Trait.Exclusive  => 2f,
+            Trait.Resistant  => 8f,
+            Trait.Avoidant   => 3f,
+            _                => 5f
+        };
         
         nav.avoidancePriority = Random.Range(20, 80);
     }
@@ -196,7 +219,49 @@ public class Agent : MonoBehaviour
     {
         stillTimer = 0f;
     }
+    
+    /* 9 ─ 아기 울음 스트레스 처리 */
+    HandleBabyCry();             
 }
+    void HandleBabyCry()   // ★ NEW
+    {
+        /* ① 울음 감지 */
+        bool cryingNearby = false;
+        foreach (var h in Physics.OverlapSphere(transform.position, 3.5f))
+        {
+            Baby b = h.GetComponent<Baby>();
+            if (b && b.IsCrying) { cryingNearby = true; break; }
+        }
+
+        /* ② 스트레스 누적 / 회복 */
+        cryStress += (cryingNearby ? 1 : -1) * Time.deltaTime;
+        cryStress = Mathf.Clamp(cryStress, 0f, cryTolerance * 2f);   // 안전
+
+        /* ③ 임계 초과 → 한 단계 하락 */
+        if (cryStress >= cryTolerance)
+        {
+            DegradeSatisfaction();
+            cryStress = 0f;
+        }
+    }
+    
+    /* 만족도 한 단계씩 낮추기 */
+    void DegradeSatisfaction()
+    {
+        switch (currentState)
+        {
+            case SatisfactionState.Satisfied:
+                SetState(SatisfactionState.Meh);
+                break;
+
+            case SatisfactionState.Meh:
+                SetState(SatisfactionState.UnSatisfied);
+                break;
+
+            // UnSatisfied는 그대로 유지
+        }
+    }
+    
 
     /* ──────────────────────────────────────────────
  *  휴식(방 점유) 시작 : 이동-에이전트를 잠시 정지시키고
@@ -222,12 +287,9 @@ public class Agent : MonoBehaviour
 
         // 4) 한 프레임 뒤에 Obstacle 을 켜기 위해 Nav 끄고 코루틴 호출
         StartCoroutine(EnableObstacleNextFrame());
-    }
-
-/* ──────────────────────────────────────────────
- *  길 위에서 빈 방이 없을 때 짧게 ‘멈춘 뒤’ 다시 Moving 으로
- *  돌아가도록 하는 쿨타임 코루틴
- * ──────────────────────────────────────────────*/
+    } 
+    
+    /* 길 위에서 빈 방이 없을 때 짧게 ‘멈춘 뒤’ 다시 Moving 으로 돌아가도록 하는 쿨타임 코루틴 */
     IEnumerator RoadRetryCooldown(float sec)
     {
         phase = Phase.Resting;           // 잠깐 대기 상태
@@ -239,16 +301,22 @@ public class Agent : MonoBehaviour
     
     IEnumerator EnableObstacleNextFrame()
     {
-        yield return null;                    // 1 frame
+        // ── ① 한 프레임 쉬어 NavMeshAgent 의 마지막 이동 반영 ──
+        yield return null;             
 
-        nav.enabled = false;
-        
-        // ④ Obstacle 설정 & 활성
-        obs.carving = true;                   // 반드시 ON
-        obs.carveOnlyStationary = false;      // 떨림 무시하고 즉시 carve
-        obs.enabled = true;
+        // ── ② Agent 완전히 OFF  ──
+        nav.enabled = false;           // ※ isStopped 상태와 관계없이 전체 비활성
+        //    (ResetPath 는 BeginRest()에서 이미 호출)
 
-        // ⑤ 휴식 타이머
+        // ── ③ NavMesh 내부 데이터가 정리될 때까지 한 프레임 더 대기 ──
+        yield return null;             
+
+        // ── ④ Obstacle 옵션 세팅 후 ON ──
+        obs.carving              = true;   // 언제나 carving
+        obs.carveOnlyStationary  = false;  // 미세 떨림 무시
+        obs.enabled              = true;   // <-- 여기 한 번만
+
+        // ── ⑤ 휴식 타이머 ──
         float t = Random.Range(restMin, restMax);
         if (restCR != null) StopCoroutine(restCR);
         restCR = StartCoroutine(RestTimer(t));
@@ -335,7 +403,7 @@ public class Agent : MonoBehaviour
         
         /* 현재 방 비우기 */
         lastRoom     = rid;   
-        currentRoom = -1;                // (UpdateOccupancy 가 해제 처리)
+        currentRoom = -1;
 
         obs.enabled = false;
         yield return new WaitForSeconds(0.05f);
@@ -364,5 +432,4 @@ public class Agent : MonoBehaviour
             tries++;
         }
     }
-
 }
