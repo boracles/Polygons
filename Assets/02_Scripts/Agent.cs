@@ -31,7 +31,13 @@ public class Agent : MonoBehaviour
         Target  // Caregiver + Child (배제 대상)
     } 
     public Label label = Label.Main;    // Main이 기본값
-    public float bias;                  // 0-1, 편견 강도
+    
+    public enum AgentKind { Normal, Target }      // 역할
+    public enum Trait     { Inclusive, Exclusive, Resistant, Avoidant }
+
+    [Header("역할 & 성향")]
+    public AgentKind kind = AgentKind.Normal;     // 인스펙터에서 설정
+    public Trait     trait = Trait.Inclusive;
 
     [Header("분리 상태")]
     public SatisfactionState currentState = SatisfactionState.Satisfied;
@@ -48,6 +54,8 @@ public class Agent : MonoBehaviour
     
     float stillTimer = 0f;
     
+    PlaceState prevPlace = PlaceState.Road;   // 직전 장소 저장
+
     // 이웃 ratio에 따라 본인의 state를 결정
     public void SetStateByRatio(float ratio)
     {
@@ -108,6 +116,13 @@ public class Agent : MonoBehaviour
 
     /* 2 ─ 현재 장소(Road/Room) 계산 */
     place = (currentRoom >= 0) ? PlaceState.Room : PlaceState.Road;
+
+    if (place != prevPlace)
+    {
+        bool inRoomNow = (place == PlaceState.Room);
+        BroadcastMessage("OnRoomStatusChanged", inRoomNow, SendMessageOptions.DontRequireReceiver);
+        prevPlace = place;
+    }
 
     /* 3 ─ 방 도착 → 휴식 진입 */
     bool roomArrived = nav.isActiveAndEnabled &&

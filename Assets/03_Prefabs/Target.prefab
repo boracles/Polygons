@@ -237,7 +237,7 @@ MonoBehaviour:
   currentState: 2
   color: 0
   restMin: 20
-  restMax: 25
+  restMax: 30
   roadWanderRadius: 2
 --- !u!195 &9175643220104931648
 NavMeshAgent:
@@ -683,6 +683,10 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8588875686846924534, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
       propertyPath: m_Layer
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8840318769974463085, guid: c43f86c4ad21e8e4eb5f547b6810d166, type: 3}
+      propertyPath: Pan2D
       value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []

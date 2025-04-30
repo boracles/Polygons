@@ -303,6 +303,7 @@ GameObject:
   - component: {fileID: 4303771461621692456}
   - component: {fileID: 6989461148667724845}
   - component: {fileID: 8840318769974463085}
+  - component: {fileID: 4822092741604129553}
   - component: {fileID: 5550630618553577986}
   m_Layer: 0
   m_Name: Baby
@@ -363,8 +364,8 @@ AudioSource:
   OutputAudioMixerGroup: {fileID: 0}
   m_audioClip: {fileID: 0}
   m_Resource: {fileID: 0}
-  m_PlayOnAwake: 1
-  m_Volume: 1
+  m_PlayOnAwake: 0
+  m_Volume: 0.1
   m_Pitch: 1
   Loop: 0
   Mute: 0
@@ -408,7 +409,7 @@ AudioSource:
     m_Curve:
     - serializedVersion: 3
       time: 0
-      value: 0
+      value: 1
       inSlope: 0
       outSlope: 0
       tangentMode: 0
@@ -448,6 +449,21 @@ AudioSource:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+--- !u!114 &4822092741604129553
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6001948635395211028}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6e9fedf44054d46b0a2e536af561e763, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  audioSource: {fileID: 8840318769974463085}
+  cryClip: {fileID: 8300000, guid: fbfcace4520a0db46bb8bfc575cc37b7, type: 3}
+  gapRange: {x: 4, y: 8}
 --- !u!135 &5550630618553577986
 SphereCollider:
   m_ObjectHideFlags: 0
