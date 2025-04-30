@@ -118,19 +118,6 @@ public class ThresholdLandscapeManager : MonoBehaviour
         {
             int groupId = kvp.Key;
             var group = kvp.Value;
-            
-            foreach (int rid in group.roomIds)
-            {
-                if (rooms.TryGetValue(rid, out var info) && info.occupant != null)
-                {
-                    var agent = info.occupant.GetComponent<Agent>();
-                    if (agent != null)
-                    {
-                        string match = agent.currentState == Agent.SatisfactionState.UnSatisfied ? "❗" : "";
-                        Debug.Log($"[Group {groupId}] roomId {rid} → {agent.name}, state: {agent.currentState} {match}");
-                    }
-                }
-            }
 
             var agents = group.roomIds
                 .Where(id => rooms.TryGetValue(id, out var r) && r.occupant != null)
@@ -364,5 +351,46 @@ public class ThresholdLandscapeManager : MonoBehaviour
 
         return false;
     }
+    
+    public bool IsCryingBabyInExactSameRoom(int roomId)
+    {
+        foreach (var baby in FindObjectsOfType<Baby>())
+        {
+            if (!baby.IsCrying()) continue;
+
+            if (TryGetRoomIdByPosition(baby.transform.position, out int babyRoomId))
+            {
+                if (babyRoomId == roomId)
+                {
+                    Debug.Log($"🍼 감지됨: {baby.name}이 roomId {babyRoomId}에서 울고 있어요! → 요청된 roomId: {roomId}");
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+    
+    public bool IsCryingBabyInSameGroup(int roomId)
+    {
+        if (!roomToGroup.TryGetValue(roomId, out int groupId)) return false;
+        if (!groups.TryGetValue(groupId, out var group)) return false;
+
+        foreach (var baby in FindObjectsOfType<Baby>())
+        {
+            if (!baby.IsCrying()) continue;
+
+            if (TryGetRoomIdByPosition(baby.transform.position, out int babyRoomId) &&
+                roomToGroup.TryGetValue(babyRoomId, out int babyGroupId) &&
+                babyGroupId == groupId)
+            {
+                Debug.Log($"🍼 {baby.name} 이 group {groupId} 안에서 울고 있음");
+                return true;
+            }
+        }
+
+        return false;
+    }
+
 
 }

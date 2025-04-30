@@ -51,18 +51,21 @@ public class Agent : MonoBehaviour
     [SerializeField] float restMax = 10.0f;
     [SerializeField] float roadWanderRadius = 2f;
     
-    [SerializeField] float stressDecayRate = 0.2f;   // 울음이 없을 때 감쇠 속도
+    [SerializeField] float stressDecayRate = 0.1f;   // 울음이 없을 때 감쇠 속도
 
     [SerializeField] [Range(0f, 1f)]
     float inclusiveness = 0.5f; //(0: 배제적 - 1: 포용적)
-    float stressThreshold => Mathf.Lerp(0.1f, 0.6f, inclusiveness);
+    float stressThreshold => Mathf.Lerp(0.5f, 1.2f, inclusiveness);
     float cryAccum = 0f;       // 누적 스트레스
     float stillTimer = 0f;
+    
+    [SerializeField] float stressDelay = 1.5f;
+    float aliveTime = 0f; // 누적 생존 시간
     
     Material cachedMaterial;
     
     PlaceState prevPlace = PlaceState.Road;   // 직전 장소 저장
-
+    
     // 이웃 ratio에 따라 본인의 state를 결정
     public void SetStateByRatio(float ratio)
     {
@@ -122,9 +125,10 @@ public class Agent : MonoBehaviour
             cachedMaterial = renderer.material;
     }
 
-    void Update()
-{
-    /* 0 ─ 매니저 존재 확인 ─────────────────────────────── */
+    void Update() 
+    {
+        aliveTime += Time.deltaTime;
+        /* 0 ─ 매니저 존재 확인 ─────────────────────────────── */
     if (ThresholdLandscapeManager.I == null) return;
 
     /* 1 ─ Occupancy 갱신 : Moving 단계에서 프레임당 한 번만 */
@@ -164,7 +168,7 @@ public class Agent : MonoBehaviour
         BeginRest();                     // phase → Resting
     }
 
-    /* 4 ─ 길 도착 → 빈 방 시도 또는 방황 */
+        /* 4 ─ 길 도착 → 빈 방 시도 또는 방황 */
     bool roadArrived = nav.isActiveAndEnabled &&
                        currentRoom < 0 &&
                        !nav.pathPending &&
@@ -223,27 +227,27 @@ public class Agent : MonoBehaviour
         stillTimer = 0f;
     }
     
-    if (label == Label.Main && place == PlaceState.Room)
-    {
-        bool cryingInRoom = ThresholdLandscapeManager.I.IsSomeoneCryingInRoom(currentRoom);
-
-        if (cryingInRoom)
+        if (label == Label.Main && place == PlaceState.Room && currentRoom >= 0 && phase == Phase.Resting && aliveTime > stressDelay)
         {
-            cryAccum += Time.deltaTime;
+            bool cryingInSameGroup = ThresholdLandscapeManager.I.IsCryingBabyInSameGroup(currentRoom);
+
+            if (cryingInSameGroup)
+            {
+                cryAccum += Time.deltaTime;
+                Debug.Log($"{name} → ✅ 울음 감지! roomId: {currentRoom}");
+            }
+            else
+            {
+                cryAccum = Mathf.Max(0f, cryAccum - Time.deltaTime * stressDecayRate);
+            }
             
-        }
-        else
-        {
-            cryAccum = Mathf.Max(0f, cryAccum - Time.deltaTime * stressDecayRate);
-        }
-
-        if (cryAccum >= stressThreshold)
-        {
-            Debug.Log($"{name} → 임계치 초과! 상태 전환: UnSatisfied");
-            SetState(SatisfactionState.UnSatisfied);
+            if (cryAccum >= stressThreshold && currentState != SatisfactionState.UnSatisfied)
+            {
+                Debug.Log($"{name} → 임계치 초과! 상태 전환: UnSatisfied");
+                SetState(SatisfactionState.UnSatisfied);
+            }
         }
     }
-}
 
     /* ──────────────────────────────────────────────
  *  휴식(방 점유) 시작 : 이동-에이전트를 잠시 정지시키고
