@@ -131,13 +131,21 @@ public class Agent : MonoBehaviour
         ThresholdLandscapeManager.I.UpdateOccupancy(
             gameObject, currentRoom, out currentRoom);
 
-    /* 2 ─ 현재 장소(Road/Room) 계산 */
+    /* 현재 장소(Road/Room) 계산 */
     place = (currentRoom >= 0) ? PlaceState.Room : PlaceState.Road;
 
     if (place != prevPlace)
     {
         bool inRoomNow = (place == PlaceState.Room);
         BroadcastMessage("OnRoomStatusChanged", inRoomNow, SendMessageOptions.DontRequireReceiver);
+        
+        if (!inRoomNow && currentState == SatisfactionState.UnSatisfied)
+        {
+            Debug.Log($"{name} 방을 떠났으므로 상태를 Satisfied로 회복");
+            SetState(SatisfactionState.Satisfied);
+            cryAccum = 0f;  // 스트레스 리셋
+        }
+        
         prevPlace = place;
     }
 
