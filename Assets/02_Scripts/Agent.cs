@@ -185,7 +185,7 @@ public class Agent : MonoBehaviour
         if (!TryClaimEmptyRoom())
         {
             RandomRoadWander();
-            StartCoroutine(RoadRetryCooldown(0.3f));
+            phase = Phase.Moving; // 계속 이동 상태 유지
         }
     }
 
@@ -341,27 +341,26 @@ public class Agent : MonoBehaviour
 
         return true;
     }
-
-    /* ───── 예약 타임아웃 ───── */
+    
     IEnumerator ReservationTimeout(int roomId, float sec)
     {
-        yield return new WaitForSeconds(sec);
-
-        // 아직 점유 못했고 예약도 살아있을 때만 해제
-        if (targetRoom == roomId && currentRoom < 0 &&
-            ThresholdLandscapeManager.I.IsReserved(roomId))
+        float timer = 0f;
+        while (timer < sec)
         {
-            ThresholdLandscapeManager.I.CancelReservation(roomId, gameObject);
-            targetRoom = -1;
-
-            // ➜ 아직 이동 중이라면 바로 Repath
-            nav.ResetPath();
-            if (phase == Phase.Moving)
+            if (phase != Phase.Moving || currentRoom >= 0) yield break;
+            if (!ThresholdLandscapeManager.I.IsReservedBy(roomId, gameObject))
             {
-                yield return null;      // 1 frame 쉬고
-                TryClaimEmptyRoom();    // 새 방 재시도
+                yield break;
             }
+
+            timer += Time.deltaTime;
+            yield return null;
         }
+
+        ThresholdLandscapeManager.I.CancelReservation(roomId, gameObject);
+        targetRoom = -1;
+        nav.ResetPath();
+        TryClaimEmptyRoom(); 
     }
     
     /* 빈 방이 없을 땐 길 위에서 랜덤 워크 */
@@ -441,13 +440,12 @@ public class Agent : MonoBehaviour
                 yield break;
             }
 
-            Debug.LogWarning($"{name} → 목적지 재시도 실패 ({attempt + 1}/5)");
-            yield return new WaitForSeconds(0.5f);
+            yield return new WaitForSeconds(0.1f);  // 더 빠르게
             attempt++;
         }
 
-        // 마지막 수단: 앞쪽으로 회피 이동
-        Vector3 backup = transform.position + transform.forward * 0.5f;
+        // fallback 더 멀리
+        Vector3 backup = transform.position + transform.forward * 1.5f;
         nav.SetDestination(backup);
     }
 

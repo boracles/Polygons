@@ -389,6 +389,13 @@ public class ThresholdLandscapeManager : MonoBehaviour
         if (!roomToGroup.TryGetValue(roomId, out int groupId)) return false;
         if (!groups.TryGetValue(groupId, out var group)) return false;
 
+        // 🛡️ 방 자체에 occupant 없으면 감지 무효
+        if (group.roomIds.All(id => !rooms.TryGetValue(id, out var r) || r.occupant == null))
+        {
+            Debug.LogWarning($"⚠️ 그룹 {groupId} 안에 아무도 없음. 울음 감지 무시");
+            return false;
+        }
+        
         if (group.isRed) return false;
         
         foreach (var baby in FindObjectsOfType<Baby>())
