@@ -11,7 +11,6 @@ public class Agent : MonoBehaviour
         Satisfied = 2
     }
     
-    /* 위치 상태 */
     public enum PlaceState { Road, Room }
     public PlaceState place = PlaceState.Road;
     
@@ -24,19 +23,20 @@ public class Agent : MonoBehaviour
     
     Coroutine restCR;
     Coroutine reservationCR;  
+    Coroutine repathCR;
 
     public enum Label 
     {
         Main,   // Adult-only
         Target  // Caregiver + Child (배제 대상)
     } 
-    public Label label = Label.Main;    // Main이 기본값
+    public Label label = Label.Main;
     
     public enum AgentKind { Normal, Target }
     public enum Trait     { Inclusive, Exclusive, Resistant, Avoidant }
 
     [Header("역할 & 성향")]
-    public AgentKind kind = AgentKind.Normal;     // 인스펙터에서 설정
+    public AgentKind kind = AgentKind.Normal;
     public Trait     trait = Trait.Inclusive;
 
     [Header("분리 상태")]
@@ -65,6 +65,9 @@ public class Agent : MonoBehaviour
     Material cachedMaterial;
     
     PlaceState prevPlace = PlaceState.Road;   // 직전 장소 저장
+    
+    [SerializeField] AudioClip warningClip;
+    AudioSource audioSource;
     
     // 이웃 ratio에 따라 본인의 state를 결정
     public void SetStateByRatio(float ratio)
@@ -98,6 +101,8 @@ public class Agent : MonoBehaviour
         obs = GetComponent<NavMeshObstacle>();
         
         nav.avoidancePriority = Random.Range(20, 80);
+        
+        audioSource = GetComponent<AudioSource>();
     }
     
     void Start()
@@ -305,25 +310,38 @@ public class Agent : MonoBehaviour
         restCR = StartCoroutine(RestTimer(t));
     }
     
-    /* ───── 빈 방 찾고 점유 등록 ───── */
     bool TryClaimEmptyRoom() 
     {
         if (!ThresholdLandscapeManager.I.TryReserveFreeRoom(
-                out int rid, gameObject, exclude:lastRoom))
+                out int rid, gameObject, exclude: lastRoom))
+        {
+            Debug.Log($"{name} → 빈 방 예약 실패");
             return false;
+        }
 
         targetRoom = rid;
-        nav.SetDestination(ThresholdLandscapeManager.I.GetRoomPosition(rid));
 
-        float dist = Vector3.Distance(transform.position,
-            ThresholdLandscapeManager.I.GetRoomPosition(rid));
-        float travelTime = dist / nav.speed;   // nav.speed == 3 → 10m ≈ 3.3s
-        float buffer = 0.3f;                   // 여유
+        Vector3 targetPos = ThresholdLandscapeManager.I.GetRoomPosition(rid);
+        bool ok = nav.SetDestination(targetPos);
+        if (!ok)
+        {
+            Debug.LogWarning($"{name} → SetDestination 실패! roomId={rid}, pos={targetPos}");
+            ThresholdLandscapeManager.I.CancelReservation(rid, gameObject); // 예약 해제
+            targetRoom = -1;
+            return false;
+        }
+
+        float dist = Vector3.Distance(transform.position, targetPos);
+        float travelTime = dist / nav.speed;
+        float buffer = 0.3f;
+
+        if (reservationCR != null) StopCoroutine(reservationCR);
         reservationCR = StartCoroutine(
             ReservationTimeout(rid, travelTime + buffer));
-        
+
         return true;
     }
+
     /* ───── 예약 타임아웃 ───── */
     IEnumerator ReservationTimeout(int roomId, float sec)
     {
@@ -413,13 +431,48 @@ public class Agent : MonoBehaviour
     
     IEnumerator RepathUntilSuccess()
     {
-        int tries = 0;
-        while (tries < 4 && !TryClaimEmptyRoom())
+        int attempt = 0;
+        while (attempt < 5)
         {
-            RandomRoadWander();
-            yield return new WaitForSeconds(0.7f);
-            tries++;
+            bool success = TryClaimEmptyRoom();
+            if (success)
+            {
+                Debug.Log($"{name} → 목적지 설정 성공 (시도 {attempt + 1})");
+                yield break;
+            }
+
+            Debug.LogWarning($"{name} → 목적지 재시도 실패 ({attempt + 1}/5)");
+            yield return new WaitForSeconds(0.5f);
+            attempt++;
         }
+
+        // 마지막 수단: 앞쪽으로 회피 이동
+        Vector3 backup = transform.position + transform.forward * 0.5f;
+        nav.SetDestination(backup);
+    }
+
+    public void LeaveRoomImmediately()
+    {
+        if (phase != Phase.Resting) return;
+
+        if (warningClip != null && audioSource != null)
+            audioSource.PlayOneShot(warningClip);
+        
+        if (currentRoom >= 0)
+            ThresholdLandscapeManager.I.VacateRoom(currentRoom);
+
+        lastRoom = currentRoom;
+        currentRoom = -1;
+
+        StopAllCoroutines();
+        obs.enabled = false;
+        nav.enabled = true;
+        nav.isStopped = false;
+        nav.ResetPath();
+
+        phase = Phase.Moving;
+
+        repathCR = StartCoroutine(RepathUntilSuccess());
     }
 
 }

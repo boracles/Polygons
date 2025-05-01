@@ -6,8 +6,7 @@ public class ThresholdLandscapeManager : MonoBehaviour
 {
     public static ThresholdLandscapeManager I { get; private set; }
     void Awake() => I = this;
-
-    /* 방 인덱스(12칸) */
+    
     static readonly int[] idx = { 1,2, 4,5, 7,8, 11,12, 14,15, 17,18 };
     readonly Dictionary<int, GameObject> reserved = new();   // roomId → 예약자
     
@@ -136,6 +135,20 @@ public class ThresholdLandscapeManager : MonoBehaviour
                     group.isRed = true;
                     SetGroupColor(groupId, Color.red);
                     Debug.Log($"[그룹 {groupId}] 상태 RED 전환");
+
+                    // 🔽 해당 방에 있는 Target 에이전트를 퇴출
+                    foreach (int roomId in group.roomIds)
+                    {
+                        if (!rooms.TryGetValue(roomId, out var r)) continue;
+                        if (r.occupant == null) continue;
+
+                        var agent = r.occupant.GetComponent<Agent>();
+                        if (agent != null && agent.label == Agent.Label.Target)
+                        {
+                            Debug.Log($"🚨 Target Agent {agent.name} → 빨간 방 퇴출: roomId {roomId}");
+                            agent.LeaveRoomImmediately();
+                        }
+                    }
                 }
             }
         }
@@ -376,15 +389,18 @@ public class ThresholdLandscapeManager : MonoBehaviour
         if (!roomToGroup.TryGetValue(roomId, out int groupId)) return false;
         if (!groups.TryGetValue(groupId, out var group)) return false;
 
+        if (group.isRed) return false;
+        
         foreach (var baby in FindObjectsOfType<Baby>())
         {
             if (!baby.IsCrying()) continue;
 
-            if (TryGetRoomIdByPosition(baby.transform.position, out int babyRoomId) &&
+            Vector3 pos = baby.transform.parent?.position ?? baby.transform.position;
+
+            if (TryGetRoomIdByPosition(pos, out int babyRoomId) &&
                 roomToGroup.TryGetValue(babyRoomId, out int babyGroupId) &&
                 babyGroupId == groupId)
             {
-                Debug.Log($"🍼 {baby.name} 이 group {groupId} 안에서 울고 있음");
                 return true;
             }
         }
